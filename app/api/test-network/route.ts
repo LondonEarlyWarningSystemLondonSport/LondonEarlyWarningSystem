@@ -3,17 +3,20 @@ import net from "net";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(): Promise<Response> {
   const host = process.env.FABRIC_SQL_SERVER;
 
   if (!host) {
     return NextResponse.json(
-      { success: false, error: "FABRIC_SQL_SERVER is missing" },
+      {
+        success: false,
+        error: "FABRIC_SQL_SERVER is missing",
+      },
       { status: 500 }
     );
   }
 
-  return new Promise((resolve) => {
+  return new Promise<Response>((resolve) => {
     const socket = net.createConnection({
       host,
       port: 1433,
