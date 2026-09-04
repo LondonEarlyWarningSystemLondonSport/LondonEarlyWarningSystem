@@ -1,3 +1,4 @@
+// Trigger Vercel deployment
 import { NextResponse } from "next/server";
 import sql from "mssql";
 
