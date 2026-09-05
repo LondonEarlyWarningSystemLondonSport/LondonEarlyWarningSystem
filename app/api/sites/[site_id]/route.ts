@@ -44,7 +44,6 @@ type SiteDetail = {
   rf3_pps_at_risk_score: number | null;
   rf6_planning_pressure_score: number | null;
 
- 
   pps_critical_site_flag: string | null;
   pps_community_use_flag: string | null;
   pps_security_of_tenure: string | null;
@@ -56,7 +55,7 @@ type SiteDetail = {
   nearest_planning_candidate_distance_metres: number | null;
   rf6_scoring_status: string | null;
   rf6_scoring_note: string | null;
-  
+
   review_reason: string | null;
 
   possible_3g_data_quality_flag: string | null;
@@ -158,9 +157,6 @@ export async function GET(
             rf3_pps_at_risk_score
             rf6_planning_pressure_score
 
-            pps_linked_flag
-            pps_source_site_name
-            pps_at_risk_flag
             pps_critical_site_flag
             pps_community_use_flag
             pps_security_of_tenure
@@ -172,9 +168,7 @@ export async function GET(
             nearest_planning_candidate_distance_metres
             rf6_scoring_status
             rf6_scoring_note
-            planning_review_required_flag_phase1_3
 
-            review_required_flag
             review_reason
 
             possible_3g_data_quality_flag
@@ -213,8 +207,7 @@ export async function GET(
         variables
       );
 
-    const site =
-      data.app_site_details.items[0];
+    const site = data.app_site_details.items[0];
 
     if (!site) {
       return NextResponse.json(
