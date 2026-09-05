@@ -211,6 +211,10 @@ export default function SitesPage() {
     }, 0);
   }
 
+  function openSite(siteId: number) {
+    window.location.href = `/site/${siteId}`;
+  }
+
   return (
     <main
       style={{
@@ -474,37 +478,45 @@ export default function SitesPage() {
                     borderTop: "1px solid #eee",
                   }}
                 >
-                  <td style={tdStyle}>
-                    <a
-                      href={`/site/${site.site_id}`}
+                  <td
+                    style={{
+                      ...tdStyle,
+                      cursor: "pointer",
+                    }}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => openSite(site.site_id)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" ||
+                        event.key === " "
+                      ) {
+                        event.preventDefault();
+                        openSite(site.site_id);
+                      }
+                    }}
+                    aria-label={`Open ${site.site_name}`}
+                  >
+                    <div
                       style={{
-                        display: "block",
-                        color: "inherit",
-                        textDecoration: "none",
-                        cursor: "pointer",
+                        fontWeight: 700,
+                        marginBottom: "4px",
+                        textDecoration: "underline",
+                        textUnderlineOffset: "3px",
                       }}
                     >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          marginBottom: "4px",
-                          textDecoration: "underline",
-                          textUnderlineOffset: "3px",
-                        }}
-                      >
-                        {site.site_name}
-                      </div>
+                      {site.site_name}
+                    </div>
 
-                      <div
-                        style={{
-                          color: "#666",
-                          fontSize: "13px",
-                        }}
-                      >
-                        {site.postcode || "No postcode"} · ID{" "}
-                        {site.site_id}
-                      </div>
-                    </a>
+                    <div
+                      style={{
+                        color: "#666",
+                        fontSize: "13px",
+                      }}
+                    >
+                      {site.postcode || "No postcode"} · ID{" "}
+                      {site.site_id}
+                    </div>
                   </td>
 
                   <td style={tdStyle}>
