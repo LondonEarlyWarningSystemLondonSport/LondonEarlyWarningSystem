@@ -478,25 +478,33 @@ export default function SitesPage() {
                     <a
                       href={`/site/${site.site_id}`}
                       style={{
-                        fontWeight: 700,
-                        marginBottom: "4px",
-                        color: "#111",
+                        display: "block",
+                        color: "inherit",
                         textDecoration: "none",
-                        display: "inline-block",
+                        cursor: "pointer",
                       }}
                     >
-                      {site.site_name}
-                    </a>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          marginBottom: "4px",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "3px",
+                        }}
+                      >
+                        {site.site_name}
+                      </div>
 
-                    <div
-                      style={{
-                        color: "#666",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {site.postcode || "No postcode"} · ID{" "}
-                      {site.site_id}
-                    </div>
+                      <div
+                        style={{
+                          color: "#666",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {site.postcode || "No postcode"} · ID{" "}
+                        {site.site_id}
+                      </div>
+                    </a>
                   </td>
 
                   <td style={tdStyle}>
