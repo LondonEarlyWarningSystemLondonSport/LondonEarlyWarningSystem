@@ -99,6 +99,9 @@ export async function GET(): Promise<Response> {
             ? error.message
             : "Unknown sites API error",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
+}
