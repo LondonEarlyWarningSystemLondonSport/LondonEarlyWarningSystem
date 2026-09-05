@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fabricGraphQL } from "@/lib/fabricGraphql";
+import { fabricGraphQL } from "../../../lib/fabricGraphql";
 
 export const runtime = "nodejs";
 
@@ -81,10 +81,12 @@ export async function GET(): Promise<Response> {
 
     const data = await fabricGraphQL<SitesResponse>(query);
 
+    const sites = data.app_site_summaries.items;
+
     return NextResponse.json({
       success: true,
-      count: data.app_site_summaries.items.length,
-      sites: data.app_site_summaries.items,
+      count: sites.length,
+      sites,
     });
   } catch (error) {
     console.error("Sites API failed:", error);
@@ -92,9 +94,11 @@ export async function GET(): Promise<Response> {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown sites API error",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown sites API error",
       },
       { status: 500 }
     );
   }
-}
