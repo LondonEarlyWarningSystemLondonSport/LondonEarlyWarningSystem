@@ -77,7 +77,7 @@ function buildFilter(
   if (search) {
     conditions.push({
       site_name: {
-        contains: search,
+        contains: search.toUpperCase(),
       },
     });
   }
