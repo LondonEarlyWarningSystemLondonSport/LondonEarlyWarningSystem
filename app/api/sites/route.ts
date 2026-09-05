@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { fabricGraphQL } from "../../../lib/fabricGraphql";
 
 export const runtime = "nodejs";
@@ -37,14 +37,102 @@ type SiteSummary = {
 type SitesResponse = {
   app_site_summaries: {
     items: SiteSummary[];
+    endCursor: string | null;
+    hasNextPage: boolean;
   };
 };
 
-export async function GET(): Promise<Response> {
+function buildFilter(
+  borough: string | null,
+  priority: string | null,
+  risk: string | null,
+  search: string | null
+) {
+  const conditions: Record<string, unknown>[] = [];
+
+  if (borough) {
+    conditions.push({
+      borough: {
+        eq: borough,
+      },
+    });
+  }
+
+  if (priority) {
+    conditions.push({
+      priority_category: {
+        eq: priority,
+      },
+    });
+  }
+
+  if (risk) {
+    conditions.push({
+      risk_band: {
+        eq: risk,
+      },
+    });
+  }
+
+  if (search) {
+    conditions.push({
+      site_name: {
+        contains: search,
+      },
+    });
+  }
+
+  if (conditions.length === 0) {
+    return null;
+  }
+
+  if (conditions.length === 1) {
+    return conditions[0];
+  }
+
+  return {
+    and: conditions,
+  };
+}
+
+export async function GET(request: NextRequest): Promise<Response> {
   try {
+    const { searchParams } = new URL(request.url);
+
+    const pageSizeRaw = Number(searchParams.get("pageSize") ?? "25");
+    const pageSize = Math.min(
+      Math.max(Number.isFinite(pageSizeRaw) ? pageSizeRaw : 25, 1),
+      100
+    );
+
+    const after = searchParams.get("after");
+    const borough = searchParams.get("borough");
+    const priority = searchParams.get("priority");
+    const risk = searchParams.get("risk");
+    const search = searchParams.get("search");
+
+    const filter = buildFilter(
+      borough,
+      priority,
+      risk,
+      search
+    );
+
     const query = `
-      query {
-        app_site_summaries(first: 2000) {
+      query GetSites(
+        $first: Int
+        $after: String
+        $filter: app_site_summaryFilterInput
+      ) {
+        app_site_summaries(
+          first: $first
+          after: $after
+          filter: $filter
+          orderBy: {
+            priority_sort_order: ASC
+            site_name: ASC
+          }
+        ) {
           items {
             site_id
             site_name
@@ -75,18 +163,43 @@ export async function GET(): Promise<Response> {
             priority_change_driver
             priority_change_reason
           }
+          endCursor
+          hasNextPage
         }
       }
     `;
 
-    const data = await fabricGraphQL<SitesResponse>(query);
+    const variables = {
+      first: pageSize,
+      after: after || null,
+      filter,
+    };
 
-    const sites = data.app_site_summaries.items;
+    const data = await fabricGraphQL<SitesResponse>(
+      query,
+      variables
+    );
+
+    const result = data.app_site_summaries;
 
     return NextResponse.json({
       success: true,
-      count: sites.length,
-      sites,
+
+      page: {
+        pageSize,
+        returned: result.items.length,
+        hasNextPage: result.hasNextPage,
+        endCursor: result.endCursor,
+      },
+
+      filters: {
+        borough,
+        priority,
+        risk,
+        search,
+      },
+
+      sites: result.items,
     });
   } catch (error) {
     console.error("Sites API failed:", error);
