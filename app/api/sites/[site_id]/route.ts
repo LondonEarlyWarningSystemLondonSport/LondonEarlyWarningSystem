@@ -44,9 +44,7 @@ type SiteDetail = {
   rf3_pps_at_risk_score: number | null;
   rf6_planning_pressure_score: number | null;
 
-  pps_linked_flag: string | null;
-  pps_source_site_name: string | null;
-  pps_at_risk_flag: string | null;
+ 
   pps_critical_site_flag: string | null;
   pps_community_use_flag: string | null;
   pps_security_of_tenure: string | null;
@@ -58,9 +56,7 @@ type SiteDetail = {
   nearest_planning_candidate_distance_metres: number | null;
   rf6_scoring_status: string | null;
   rf6_scoring_note: string | null;
-  planning_review_required_flag_phase1_3: string | null;
-
-  review_required_flag: string | null;
+  
   review_reason: string | null;
 
   possible_3g_data_quality_flag: string | null;
