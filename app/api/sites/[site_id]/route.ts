@@ -65,11 +65,6 @@ type SiteDetail = {
   missing_owner_flag: string | null;
   missing_management_flag: string | null;
 
-  phase1_3_priority_change_flag: string | null;
-  phase1_3_risk_band_change_flag: string | null;
-  rf6_contributed_to_score_flag: string | null;
-  rf6_changed_risk_band_flag: string | null;
-  phase1_3_priority_change_driver: string | null;
   phase1_3_priority_change_reason_final: string | null;
 
   phase1_3_scope_tag: string | null;
@@ -178,11 +173,6 @@ export async function GET(
             missing_owner_flag
             missing_management_flag
 
-            phase1_3_priority_change_flag
-            phase1_3_risk_band_change_flag
-            rf6_contributed_to_score_flag
-            rf6_changed_risk_band_flag
-            phase1_3_priority_change_driver
             phase1_3_priority_change_reason_final
 
             phase1_3_scope_tag
