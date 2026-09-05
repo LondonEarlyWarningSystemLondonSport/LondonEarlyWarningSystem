@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type SiteSummary = {
   site_id: number;
@@ -144,7 +145,9 @@ export default function SitesPage() {
       setNextPage(data.page?.nextPage || null);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Unable to load sites"
+        err instanceof Error
+          ? err.message
+          : "Unable to load sites"
       );
     } finally {
       setLoading(false);
@@ -165,7 +168,9 @@ export default function SitesPage() {
       const data: SitesApiResponse = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Unable to load more sites");
+        throw new Error(
+          data.error || "Unable to load more sites"
+        );
       }
 
       setSites((current) => [
@@ -301,6 +306,7 @@ export default function SitesPage() {
               }}
             >
               <option value="">All boroughs</option>
+
               {boroughOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -321,6 +327,7 @@ export default function SitesPage() {
               }}
             >
               <option value="">All priorities</option>
+
               {priorityOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -341,6 +348,7 @@ export default function SitesPage() {
               }}
             >
               <option value="">All risk bands</option>
+
               {riskOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -468,24 +476,36 @@ export default function SitesPage() {
                   }}
                 >
                   <td style={tdStyle}>
-                    <div
+                    <Link
+                      href={`/site/${site.site_id}`}
                       style={{
-                        fontWeight: 700,
-                        marginBottom: "4px",
+                        display: "block",
+                        color: "inherit",
+                        textDecoration: "none",
+                        cursor: "pointer",
                       }}
                     >
-                      {site.site_name}
-                    </div>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          marginBottom: "4px",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "3px",
+                        }}
+                      >
+                        {site.site_name}
+                      </div>
 
-                    <div
-                      style={{
-                        color: "#666",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {site.postcode || "No postcode"} · ID{" "}
-                      {site.site_id}
-                    </div>
+                      <div
+                        style={{
+                          color: "#666",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {site.postcode || "No postcode"} · ID{" "}
+                        {site.site_id}
+                      </div>
+                    </Link>
                   </td>
 
                   <td style={tdStyle}>
@@ -575,12 +595,18 @@ export default function SitesPage() {
               padding: "12px 24px",
               borderRadius: "8px",
               border: "1px solid #222",
-              background: loadingMore ? "#eee" : "#fff",
-              cursor: loadingMore ? "default" : "pointer",
+              background: loadingMore
+                ? "#eee"
+                : "#fff",
+              cursor: loadingMore
+                ? "default"
+                : "pointer",
               fontWeight: 700,
             }}
           >
-            {loadingMore ? "Loading..." : "Load more"}
+            {loadingMore
+              ? "Loading..."
+              : "Load more"}
           </button>
         </div>
       )}
