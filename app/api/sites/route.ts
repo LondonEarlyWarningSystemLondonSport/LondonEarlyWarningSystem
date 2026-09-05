@@ -182,25 +182,44 @@ export async function GET(request: NextRequest): Promise<Response> {
 
     const result = data.app_site_summaries;
 
-    return NextResponse.json({
-      success: true,
+const nextPageParams = new URLSearchParams();
 
-      page: {
-        pageSize,
-        returned: result.items.length,
-        hasNextPage: result.hasNextPage,
-        endCursor: result.endCursor,
-      },
+nextPageParams.set("pageSize", String(pageSize));
 
-      filters: {
-        borough,
-        priority,
-        risk,
-        search,
-      },
+if (borough) nextPageParams.set("borough", borough);
+if (priority) nextPageParams.set("priority", priority);
+if (risk) nextPageParams.set("risk", risk);
+if (search) nextPageParams.set("search", search);
 
-      sites: result.items,
-    });
+if (result.hasNextPage && result.endCursor) {
+  nextPageParams.set("after", result.endCursor);
+}
+
+const nextPage =
+  result.hasNextPage && result.endCursor
+    ? `/api/sites?${nextPageParams.toString()}`
+    : null;
+
+return NextResponse.json({
+  success: true,
+
+  page: {
+    pageSize,
+    returned: result.items.length,
+    hasNextPage: result.hasNextPage,
+    endCursor: result.endCursor,
+    nextPage,
+  },
+
+  filters: {
+    borough,
+    priority,
+    risk,
+    search,
+  },
+
+  sites: result.items,
+});
   } catch (error) {
     console.error("Sites API failed:", error);
 
