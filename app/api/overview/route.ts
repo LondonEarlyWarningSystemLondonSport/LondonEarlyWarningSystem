@@ -4,19 +4,20 @@ import { fabricGraphQL } from "../../../lib/fabricGraphql";
 export const runtime = "nodejs";
 
 type BoroughSummary = {
-  borough: string;
+  borough: string | null;
 
-  current_playing_field_sites: number | null;
+  total_sites: number | null;
 
-  priority_a_sites: number | null;
-  priority_b_sites: number | null;
-  priority_c_sites: number | null;
-  strategic_monitor_sites: number | null;
-  risk_review_sites: number | null;
-  monitor_sites: number | null;
+  priority_a_count: number | null;
+  priority_b_count: number | null;
+  priority_c_count: number | null;
 
-  sites_with_confirmed_rf6_score: number | null;
-  sites_with_planning_review_evidence: number | null;
+  strategic_monitor_count: number | null;
+  risk_review_count: number | null;
+  monitor_count: number | null;
+
+  confirmed_planning_score_count: number | null;
+  planning_review_count: number | null;
 
   high_risk_count: number | null;
   medium_risk_count: number | null;
@@ -46,17 +47,18 @@ export async function GET(): Promise<Response> {
           items {
             borough
 
-            current_playing_field_sites
+            total_sites
 
-            priority_a_sites
-            priority_b_sites
-            priority_c_sites
-            strategic_monitor_sites
-            risk_review_sites
-            monitor_sites
+            priority_a_count
+            priority_b_count
+            priority_c_count
 
-            sites_with_confirmed_rf6_score
-            sites_with_planning_review_evidence
+            strategic_monitor_count
+            risk_review_count
+            monitor_count
+
+            confirmed_planning_score_count
+            planning_review_count
 
             high_risk_count
             medium_risk_count
@@ -82,35 +84,33 @@ export async function GET(): Promise<Response> {
     const totals = boroughs.reduce(
       (accumulator, borough) => {
         accumulator.currentPlayingFieldSites +=
-          value(borough.current_playing_field_sites);
+          value(borough.total_sites);
 
         accumulator.priorityA +=
-          value(borough.priority_a_sites);
+          value(borough.priority_a_count);
 
         accumulator.priorityB +=
-          value(borough.priority_b_sites);
+          value(borough.priority_b_count);
 
         accumulator.priorityC +=
-          value(borough.priority_c_sites);
+          value(borough.priority_c_count);
 
         accumulator.strategicMonitor +=
-          value(borough.strategic_monitor_sites);
+          value(borough.strategic_monitor_count);
 
         accumulator.riskReview +=
-          value(borough.risk_review_sites);
+          value(borough.risk_review_count);
 
         accumulator.monitor +=
-          value(borough.monitor_sites);
+          value(borough.monitor_count);
 
         accumulator.confirmedRf6Sites +=
           value(
-            borough.sites_with_confirmed_rf6_score
+            borough.confirmed_planning_score_count
           );
 
         accumulator.planningReviewEvidenceSites +=
-          value(
-            borough.sites_with_planning_review_evidence
-          );
+          value(borough.planning_review_count);
 
         accumulator.highRisk +=
           value(borough.high_risk_count);
@@ -141,6 +141,7 @@ export async function GET(): Promise<Response> {
         priorityA: 0,
         priorityB: 0,
         priorityC: 0,
+
         strategicMonitor: 0,
         riskReview: 0,
         monitor: 0,
@@ -179,11 +180,13 @@ export async function GET(): Promise<Response> {
 
     const sortedBoroughs = [...boroughs].sort(
       (a, b) =>
-        value(b.priority_a_sites) -
-          value(a.priority_a_sites) ||
-        value(b.priority_b_sites) -
-          value(a.priority_b_sites) ||
-        a.borough.localeCompare(b.borough)
+        value(b.priority_a_count) -
+          value(a.priority_a_count) ||
+        value(b.priority_b_count) -
+          value(a.priority_b_count) ||
+        (a.borough || "").localeCompare(
+          b.borough || ""
+        )
     );
 
     return NextResponse.json({
