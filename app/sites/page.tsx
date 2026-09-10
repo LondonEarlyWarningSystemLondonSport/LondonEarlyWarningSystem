@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AppShell from "../../components/AppShell";
@@ -139,19 +143,48 @@ const riskOptions = [
 ];
 
 export default function SitesPage() {
+  return (
+    <Suspense fallback={<SitesPageLoading />}>
+      <SitesPageContent />
+    </Suspense>
+  );
+}
+
+function SitesPageLoading() {
+  return (
+    <AppShell>
+      <main style={pageStyle}>
+        <section style={heroStyle}>
+          <div style={heroEyebrowStyle}>
+            London playing field intelligence
+          </div>
+
+          <h1 style={heroTitleStyle}>
+            Explore Sites
+          </h1>
+
+          <p style={heroTextStyle}>
+            Loading the current playing field assessment...
+          </p>
+        </section>
+      </main>
+    </AppShell>
+  );
+}
+
+function SitesPageContent() {
   const searchParams = useSearchParams();
 
   const priorityFromUrl =
     searchParams.get("priority") || "";
 
-  const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [sites, setSites] =
+    useState<SiteSummary[]>([]);
 
   const [search, setSearch] = useState("");
   const [borough, setBorough] = useState("");
-
   const [priority, setPriority] =
     useState(priorityFromUrl);
-
   const [risk, setRisk] = useState("");
 
   const [nextPage, setNextPage] =
@@ -298,12 +331,6 @@ export default function SitesPage() {
     }
   }
 
-  /*
-    Keep the selected priority in sync with
-    links such as:
-
-    /sites?priority=Priority%20A
-  */
   useEffect(() => {
     const urlPriority =
       searchParams.get("priority") || "";
@@ -311,10 +338,6 @@ export default function SitesPage() {
     setPriority(urlPriority);
   }, [searchParams]);
 
-  /*
-    Load the site population whenever one
-    of the automatic filters changes.
-  */
   useEffect(() => {
     loadSites();
   }, [borough, priority, risk]);
@@ -382,125 +405,87 @@ export default function SitesPage() {
           </h1>
 
           <p style={heroTextStyle}>
-            Explore London&apos;s current
-            playing field assessment by
-            priority, borough and risk.
-            Understand which sites require
-            attention and why.
+            Explore London&apos;s current playing field
+            assessment by priority, borough and risk.
+            Understand which sites require attention and
+            why.
           </p>
         </section>
 
         <section style={workspaceStyle}>
           <div style={tabScrollStyle}>
             <div style={tabsStyle}>
-              {priorityTabs.map(
-                (tab) => {
-                  const active =
-                    priority ===
-                    tab.value;
+              {priorityTabs.map((tab) => {
+                const active =
+                  priority === tab.value;
 
-                  return (
-                    <button
-                      key={tab.label}
-                      type="button"
-                      onClick={() =>
-                        handlePriorityTab(
-                          tab.value
-                        )
-                      }
-                      style={{
-                        ...tabStyle,
-                        ...(active
-                          ? activeTabStyle
-                          : {}),
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                }
-              )}
+                return (
+                  <button
+                    key={tab.label}
+                    type="button"
+                    onClick={() =>
+                      handlePriorityTab(tab.value)
+                    }
+                    style={{
+                      ...tabStyle,
+                      ...(active
+                        ? activeTabStyle
+                        : {}),
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div style={tabContextStyle}>
             <div>
-              <div
-                style={
-                  tabContextTitleStyle
-                }
-              >
+              <div style={tabContextTitleStyle}>
                 {activeTab.label}
               </div>
 
-              <div
-                style={
-                  tabContextTextStyle
-                }
-              >
-                {
-                  activeTab.description
-                }
+              <div style={tabContextTextStyle}>
+                {activeTab.description}
               </div>
             </div>
 
             {priority && (
-              <PriorityBadge
-                value={priority}
-              />
+              <PriorityBadge value={priority} />
             )}
           </div>
 
           <form
-            onSubmit={
-              handleSearchSubmit
-            }
+            onSubmit={handleSearchSubmit}
             style={filterPanelStyle}
           >
-            <div
-              style={filterGridStyle}
-            >
-              <div
-                style={filterFieldStyle}
-              >
-                <label
-                  style={labelStyle}
-                >
+            <div style={filterGridStyle}>
+              <div style={filterFieldStyle}>
+                <label style={labelStyle}>
                   Search sites
                 </label>
 
                 <input
                   type="search"
                   value={search}
-                  onChange={(
-                    event
-                  ) =>
-                    setSearch(
-                      event.target.value
-                    )
+                  onChange={(event) =>
+                    setSearch(event.target.value)
                   }
                   placeholder="Search by site name"
                   style={inputStyle}
                 />
               </div>
 
-              <div
-                style={filterFieldStyle}
-              >
-                <label
-                  style={labelStyle}
-                >
+              <div style={filterFieldStyle}>
+                <label style={labelStyle}>
                   Borough
                 </label>
 
                 <select
                   value={borough}
-                  onChange={(
-                    event
-                  ) =>
-                    setBorough(
-                      event.target.value
-                    )
+                  onChange={(event) =>
+                    setBorough(event.target.value)
                   }
                   style={inputStyle}
                 >
@@ -508,36 +493,26 @@ export default function SitesPage() {
                     All boroughs
                   </option>
 
-                  {boroughOptions.map(
-                    (item) => (
-                      <option
-                        key={item}
-                        value={item}
-                      >
-                        {item}
-                      </option>
-                    )
-                  )}
+                  {boroughOptions.map((item) => (
+                    <option
+                      key={item}
+                      value={item}
+                    >
+                      {item}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div
-                style={filterFieldStyle}
-              >
-                <label
-                  style={labelStyle}
-                >
+              <div style={filterFieldStyle}>
+                <label style={labelStyle}>
                   Risk
                 </label>
 
                 <select
                   value={risk}
-                  onChange={(
-                    event
-                  ) =>
-                    setRisk(
-                      event.target.value
-                    )
+                  onChange={(event) =>
+                    setRisk(event.target.value)
                   }
                   style={inputStyle}
                 >
@@ -545,41 +520,29 @@ export default function SitesPage() {
                     All risk bands
                   </option>
 
-                  {riskOptions.map(
-                    (item) => (
-                      <option
-                        key={item}
-                        value={item}
-                      >
-                        {item}
-                      </option>
-                    )
-                  )}
+                  {riskOptions.map((item) => (
+                    <option
+                      key={item}
+                      value={item}
+                    >
+                      {item}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div
-                style={
-                  filterActionsStyle
-                }
-              >
+              <div style={filterActionsStyle}>
                 <button
                   type="submit"
-                  style={
-                    primaryButtonStyle
-                  }
+                  style={primaryButtonStyle}
                 >
                   Search
                 </button>
 
                 <button
                   type="button"
-                  onClick={
-                    clearFilters
-                  }
-                  style={
-                    secondaryButtonStyle
-                  }
+                  onClick={clearFilters}
+                  style={secondaryButtonStyle}
                 >
                   Reset
                 </button>
@@ -587,29 +550,18 @@ export default function SitesPage() {
             </div>
           </form>
 
-          <div
-            style={resultsHeaderStyle}
-          >
+          <div style={resultsHeaderStyle}>
             <div>
-              <div
-                style={
-                  resultsTitleStyle
-                }
-              >
+              <div style={resultsTitleStyle}>
                 {loading
                   ? "Loading sites..."
                   : `${sites.length} sites shown`}
               </div>
 
               {!loading && (
-                <div
-                  style={
-                    resultsSubtextStyle
-                  }
-                >
-                  Results are ordered
-                  by current priority
-                  and site name.
+                <div style={resultsSubtextStyle}>
+                  Results are ordered by current
+                  priority and site name.
                 </div>
               )}
             </div>
@@ -618,15 +570,10 @@ export default function SitesPage() {
           {error && (
             <div style={errorStyle}>
               <strong>
-                We could not load the
-                sites.
+                We could not load the sites.
               </strong>
 
-              <div
-                style={{
-                  marginTop: "4px",
-                }}
-              >
+              <div style={{ marginTop: "4px" }}>
                 {error}
               </div>
             </div>
@@ -635,269 +582,168 @@ export default function SitesPage() {
           {!loading &&
             sites.length === 0 &&
             !error && (
-              <div
-                style={emptyStyle}
-              >
-                <div
-                  style={
-                    emptyTitleStyle
-                  }
-                >
+              <div style={emptyStyle}>
+                <div style={emptyTitleStyle}>
                   No sites found
                 </div>
 
-                <div
-                  style={
-                    emptyTextStyle
-                  }
-                >
-                  Try changing the
-                  priority, borough,
-                  risk or search term.
+                <div style={emptyTextStyle}>
+                  Try changing the priority,
+                  borough, risk or search term.
                 </div>
               </div>
             )}
 
           {sites.length > 0 && (
-            <div
-              style={tableCardStyle}
-            >
-              <div
-                style={
-                  tableScrollStyle
-                }
-              >
-                <table
-                  style={tableStyle}
-                >
+            <div style={tableCardStyle}>
+              <div style={tableScrollStyle}>
+                <table style={tableStyle}>
                   <thead>
-                    <tr
-                      style={
-                        tableHeaderRowStyle
-                      }
-                    >
-                      <th
-                        style={thStyle}
-                      >
+                    <tr style={tableHeaderRowStyle}>
+                      <th style={thStyle}>
                         Site
                       </th>
 
-                      <th
-                        style={thStyle}
-                      >
+                      <th style={thStyle}>
                         Borough
                       </th>
 
-                      <th
-                        style={thStyle}
-                      >
+                      <th style={thStyle}>
                         Priority
                       </th>
 
-                      <th
-                        style={thStyle}
-                      >
+                      <th style={thStyle}>
                         Risk
                       </th>
 
-                      <th
-                        style={thStyle}
-                      >
+                      <th style={thStyle}>
                         Strategic value
                       </th>
 
-                      <th
-                        style={thStyle}
-                      >
+                      <th style={thStyle}>
                         Planning evidence
                       </th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {sites.map(
-                      (site) => (
-                        <tr
-                          key={
-                            site.site_id
-                          }
-                          style={
-                            tableRowStyle
-                          }
-                        >
-                          <td
-                            style={
-                              siteTdStyle
-                            }
+                    {sites.map((site) => (
+                      <tr
+                        key={site.site_id}
+                        style={tableRowStyle}
+                      >
+                        <td style={siteTdStyle}>
+                          <Link
+                            href={`/site/${site.site_id}`}
+                            style={siteLinkStyle}
                           >
-                            <Link
-                              href={`/site/${site.site_id}`}
-                              style={
-                                siteLinkStyle
-                              }
-                            >
-                              <div
-                                style={
-                                  siteNameStyle
-                                }
-                              >
-                                {
-                                  site.site_name
-                                }
-                              </div>
-
-                              <div
-                                style={
-                                  siteMetaStyle
-                                }
-                              >
-                                {site.postcode ||
-                                  "No postcode"}{" "}
-                                · Site ID{" "}
-                                {
-                                  site.site_id
-                                }
-                              </div>
-
-                              <div
-                                style={
-                                  viewRecordStyle
-                                }
-                              >
-                                View site →
-                              </div>
-                            </Link>
-                          </td>
-
-                          <td
-                            style={
-                              tdStyle
-                            }
-                          >
-                            {
-                              site.borough
-                            }
-                          </td>
-
-                          <td
-                            style={
-                              tdStyle
-                            }
-                          >
-                            <PriorityBadge
-                              value={
-                                site.priority_category
-                              }
-                            />
-                          </td>
-
-                          <td
-                            style={
-                              tdStyle
-                            }
-                          >
-                            <RiskBadge
-                              value={
-                                site.risk_band
-                              }
-                            />
-
-                            {site.risk_exposure_score !==
-                              null && (
-                              <div
-                                style={
-                                  scoreTextStyle
-                                }
-                              >
-                                Score{" "}
-                                {
-                                  site.risk_exposure_score
-                                }
-                              </div>
-                            )}
-                          </td>
-
-                          <td
-                            style={
-                              tdStyle
-                            }
-                          >
-                            <div
-                              style={{
-                                fontWeight: 700,
-                              }}
-                            >
-                              {site.strategic_value_band ||
-                                "Not available"}
+                            <div style={siteNameStyle}>
+                              {site.site_name}
                             </div>
 
-                            {site.strategic_value_score !==
-                              null && (
-                              <div
-                                style={
-                                  scoreTextStyle
-                                }
-                              >
-                                Score{" "}
-                                {
-                                  site.strategic_value_score
-                                }
-                              </div>
-                            )}
-                          </td>
+                            <div style={siteMetaStyle}>
+                              {site.postcode ||
+                                "No postcode"}{" "}
+                              · Site ID{" "}
+                              {site.site_id}
+                            </div>
 
-                          <td
-                            style={
-                              tdStyle
+                            <div style={viewRecordStyle}>
+                              View site →
+                            </div>
+                          </Link>
+                        </td>
+
+                        <td style={tdStyle}>
+                          {site.borough}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <PriorityBadge
+                            value={
+                              site.priority_category
                             }
+                          />
+                        </td>
+
+                        <td style={tdStyle}>
+                          <RiskBadge
+                            value={
+                              site.risk_band
+                            }
+                          />
+
+                          {site.risk_exposure_score !==
+                            null && (
+                            <div style={scoreTextStyle}>
+                              Score{" "}
+                              {
+                                site.risk_exposure_score
+                              }
+                            </div>
+                          )}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                            }}
                           >
-                            <PlanningEvidence
-                              candidateCount={
-                                site.planning_candidate_count ??
-                                0
+                            {site.strategic_value_band ||
+                              "Not available"}
+                          </div>
+
+                          {site.strategic_value_score !==
+                            null && (
+                            <div style={scoreTextStyle}>
+                              Score{" "}
+                              {
+                                site.strategic_value_score
                               }
-                              confirmedCount={
-                                site.confirmed_planning_count ??
-                                0
-                              }
-                            />
-                          </td>
-                        </tr>
-                      )
-                    )}
+                            </div>
+                          )}
+                        </td>
+
+                        <td style={tdStyle}>
+                          <PlanningEvidence
+                            candidateCount={
+                              site.planning_candidate_count ??
+                              0
+                            }
+                            confirmedCount={
+                              site.confirmed_planning_count ??
+                              0
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {nextPage &&
-            !loading && (
-              <div
-                style={
-                  loadMoreWrapStyle
-                }
+          {nextPage && !loading && (
+            <div style={loadMoreWrapStyle}>
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                style={{
+                  ...loadMoreButtonStyle,
+                  opacity: loadingMore
+                    ? 0.6
+                    : 1,
+                }}
               >
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={
-                    loadingMore
-                  }
-                  style={{
-                    ...loadMoreButtonStyle,
-                    opacity:
-                      loadingMore
-                        ? 0.6
-                        : 1,
-                  }}
-                >
-                  {loadingMore
-                    ? "Loading more sites..."
-                    : "Load more sites"}
-                </button>
-              </div>
-            )}
+                {loadingMore
+                  ? "Loading more sites..."
+                  : "Load more sites"}
+              </button>
+            </div>
+          )}
         </section>
       </main>
     </AppShell>
@@ -913,9 +759,7 @@ function PriorityBadge({
     <span
       style={{
         ...badgeBaseStyle,
-        ...getPriorityStyle(
-          value
-        ),
+        ...getPriorityStyle(value),
       }}
     >
       {value}
@@ -950,18 +794,11 @@ function PlanningEvidence({
   if (confirmedCount > 0) {
     return (
       <div>
-        <div
-          style={
-            planningConfirmedStyle
-          }
-        >
-          {confirmedCount} confirmed
-          RF6
+        <div style={planningConfirmedStyle}>
+          {confirmedCount} confirmed RF6
         </div>
 
-        <div
-          style={scoreTextStyle}
-        >
+        <div style={scoreTextStyle}>
           {candidateCount} planning{" "}
           {candidateCount === 1
             ? "candidate"
@@ -975,17 +812,11 @@ function PlanningEvidence({
   if (candidateCount > 0) {
     return (
       <div>
-        <div
-          style={
-            planningReviewStyle
-          }
-        >
+        <div style={planningReviewStyle}>
           Evidence for review
         </div>
 
-        <div
-          style={scoreTextStyle}
-        >
+        <div style={scoreTextStyle}>
           {candidateCount} planning{" "}
           {candidateCount === 1
             ? "candidate"
@@ -1123,8 +954,7 @@ const workspaceStyle: React.CSSProperties = {
 
 const tabScrollStyle: React.CSSProperties = {
   overflowX: "auto",
-  borderBottom:
-    "1px solid #e4e0dc",
+  borderBottom: "1px solid #e4e0dc",
   background: "#fbfaf8",
 };
 
@@ -1136,8 +966,7 @@ const tabsStyle: React.CSSProperties = {
 
 const tabStyle: React.CSSProperties = {
   border: 0,
-  borderBottom:
-    "3px solid transparent",
+  borderBottom: "3px solid transparent",
   background: "transparent",
   padding: "20px 15px 16px",
   fontSize: "13px",
@@ -1157,8 +986,7 @@ const tabContextStyle: React.CSSProperties = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: "20px",
-  borderBottom:
-    "1px solid #eeeae6",
+  borderBottom: "1px solid #eeeae6",
 };
 
 const tabContextTitleStyle: React.CSSProperties = {
@@ -1177,8 +1005,7 @@ const tabContextTextStyle: React.CSSProperties = {
 const filterPanelStyle: React.CSSProperties = {
   padding: "22px 28px",
   background: "#f8f6f3",
-  borderBottom:
-    "1px solid #e8e4df",
+  borderBottom: "1px solid #e8e4df",
 };
 
 const filterGridStyle: React.CSSProperties = {
@@ -1278,8 +1105,7 @@ const tableHeaderRowStyle: React.CSSProperties = {
 };
 
 const tableRowStyle: React.CSSProperties = {
-  borderTop:
-    "1px solid #ebe8e4",
+  borderTop: "1px solid #ebe8e4",
 };
 
 const thStyle: React.CSSProperties = {
