@@ -1571,4 +1571,3 @@ const ctaButtonStyle: React.CSSProperties = {
   fontWeight: 850,
   whiteSpace: "nowrap",
 };
-
