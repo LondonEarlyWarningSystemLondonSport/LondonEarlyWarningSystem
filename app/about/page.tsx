@@ -1,29 +1,208 @@
+"use client";
+
+import {
+  useEffect,
+  useState,
+} from "react";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
 
+type OverviewData = {
+  assessedSites: number;
+  boroughCount: number;
+
+  priorities: {
+    priorityA: number;
+    priorityB: number;
+    priorityC: number;
+    strategicMonitor: number;
+    riskReview: number;
+    monitor: number;
+  };
+
+  risk: {
+    high: number;
+    medium: number;
+    noCurrentRisk: number;
+  };
+
+  planning: {
+    confirmedRf6Sites: number;
+    planningReviewEvidenceSites: number;
+  };
+
+  evidence: {
+    ppsLinkedSites: number;
+    knownAtRiskSites: number;
+    reviewRequiredSites: number;
+    imdDecile1To3Sites: number;
+  };
+};
+
+type OverviewResponse = {
+  success: boolean;
+  overview?: OverviewData;
+  validation?: {
+    boroughCount: number;
+    categoryTotal: number;
+    populationMatchesCategories: boolean;
+  };
+  error?: string;
+};
+
+type Tone =
+  | "priorityA"
+  | "priorityB"
+  | "priorityC"
+  | "strategic"
+  | "review"
+  | "monitor";
+
 export default function AboutPage() {
+  const [overview, setOverview] =
+    useState<OverviewData | null>(null);
+
+  const [validation, setValidation] =
+    useState<OverviewResponse["validation"]>();
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadOverview() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch(
+          "/api/overview",
+          {
+            cache: "no-store",
+          }
+        );
+
+        const data: OverviewResponse =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success ||
+          !data.overview
+        ) {
+          throw new Error(
+            data.error ||
+              "Unable to load current assessment"
+          );
+        }
+
+        setOverview(data.overview);
+        setValidation(data.validation);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load assessment"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadOverview();
+  }, []);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <main style={pageStyle}>
+          <div style={loadingStyle}>
+            Loading current assessment...
+          </div>
+        </main>
+      </AppShell>
+    );
+  }
+
+  if (error || !overview) {
+    return (
+      <AppShell>
+        <main style={pageStyle}>
+          <div style={errorStyle}>
+            <strong>
+              We could not load the current
+              assessment information.
+            </strong>
+
+            <div style={{ marginTop: "6px" }}>
+              {error ||
+                "Assessment information unavailable"}
+            </div>
+          </div>
+        </main>
+      </AppShell>
+    );
+  }
+
+  const currentPriorityTotal =
+    overview.priorities.priorityA +
+    overview.priorities.priorityB +
+    overview.priorities.priorityC;
+
+  const monitoringTotal =
+    overview.priorities.strategicMonitor +
+    overview.priorities.riskReview +
+    overview.priorities.monitor;
+
+  /*
+    The current overview API exposes High,
+    Medium and No Current Risk directly.
+
+    Low Risk is therefore derived as the
+    remaining assessed population.
+  */
+  const lowRisk =
+    overview.assessedSites -
+    overview.risk.high -
+    overview.risk.medium -
+    overview.risk.noCurrentRisk;
+
+  const planningReviewOnly =
+    overview.planning
+      .planningReviewEvidenceSites -
+    overview.planning.confirmedRf6Sites;
+
   return (
     <AppShell>
       <main style={pageStyle}>
+        {/* HERO */}
+
         <section style={heroStyle}>
           <div style={heroEyebrowStyle}>
-            About the assessment
+            Assessment & assurance
           </div>
 
           <h1 style={heroTitleStyle}>
-            How the London Early Warning System works
+            How the London Early Warning
+            System works
           </h1>
 
           <p style={heroTextStyle}>
-            The assessment brings together strategic value,
-            current risk evidence, planning pressure and
-            playing field context to help identify which
-            sites may require the greatest attention.
+            The system provides a consistent
+            evidence-led assessment of current
+            London playing-field sites. It
+            identifies where risk signals are
+            present, considers how strategically
+            important each site is and then
+            assigns an appropriate priority or
+            monitoring outcome.
           </p>
 
           <div style={heroActionsStyle}>
             <a
-              href="#assessment"
+              href="#method"
               style={primaryActionStyle}
             >
               Understand the assessment ↓
@@ -38,302 +217,376 @@ export default function AboutPage() {
           </div>
         </section>
 
+        {/* ASSESSMENT AT A GLANCE */}
+
+        <section style={sectionWrapStyle}>
+          <SectionHeading
+            eyebrow="Current assessment"
+            title="Assessment at a glance"
+            description="These figures are taken from the same governed assessment data used by the rest of the system."
+          />
+
+          <div style={headlineGridStyle}>
+            <HeadlineMetric
+              value={overview.assessedSites}
+              label="sites in the current assessed population"
+            />
+
+            <HeadlineMetric
+              value={overview.boroughCount}
+              label="London boroughs represented"
+            />
+
+            <HeadlineMetric
+              value={currentPriorityTotal}
+              label="sites currently in Priority A, B or C"
+            />
+
+            <HeadlineMetric
+              value={monitoringTotal}
+              label="sites in monitoring or review categories"
+            />
+          </div>
+
+          <div style={validationPanelStyle}>
+            <div>
+              <div style={validationLabelStyle}>
+                Population reconciliation
+              </div>
+
+              <div style={validationHeadlineStyle}>
+                Every assessed site is accounted
+                for in a current priority or
+                monitoring category.
+              </div>
+            </div>
+
+            <div style={validationMathStyle}>
+              <strong>
+                {formatNumber(
+                  validation?.categoryTotal ??
+                    overview.assessedSites
+                )}
+              </strong>
+
+              <span>
+                {" "}
+                category records
+              </span>
+
+              <span style={validationEqualsStyle}>
+                =
+              </span>
+
+              <strong>
+                {formatNumber(
+                  overview.assessedSites
+                )}
+              </strong>
+
+              <span>
+                {" "}
+                assessed sites
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* SCOPE */}
+
+        <section style={sectionWrapStyle}>
+          <SectionHeading
+            eyebrow="Coverage"
+            title="What does the assessment cover?"
+          />
+
+          <div style={scopeGridStyle}>
+            <div style={scopePrimaryStyle}>
+              <div style={scopeNumberStyle}>
+                {formatNumber(
+                  overview.assessedSites
+                )}
+              </div>
+
+              <div style={scopeLabelStyle}>
+                current assessed sites
+              </div>
+
+              <p style={scopeTextStyle}>
+                The current assessment covers
+                identified playing-field sites
+                across London that meet the
+                current assessment scope. Each
+                site has a unique record and is
+                considered using the same
+                risk-led framework.
+              </p>
+            </div>
+
+            <div style={scopeSecondaryStyle}>
+              <div style={cardEyebrowStyle}>
+                Protection cases remain visible
+              </div>
+
+              <h3 style={cardTitleStyle}>
+                Being outside the assessed
+                population does not mean a site
+                has been discarded.
+              </h3>
+
+              <p style={bodyTextStyle}>
+                Known protection cases that do
+                not sit within the current
+                assessed population, including
+                certain closed, dormant,
+                unmatched or other exceptional
+                records, are retained separately
+                within the protection and
+                reconciliation evidence.
+              </p>
+
+              <p style={bodyTextStyle}>
+                This prevents unresolved cases
+                from being forced into a ranking
+                simply to make the numbers fit.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* METHOD */}
+
         <section
-          id="assessment"
+          id="method"
           style={sectionWrapStyle}
         >
           <SectionHeading
-            eyebrow="The purpose"
-            title="What is the assessment trying to do?"
+            eyebrow="Risk-led methodology"
+            title="How each site is assessed"
+            description="Risk and Strategic Value are assessed as separate dimensions. Because this is an early-warning system, Risk is considered first when interpreting the result."
           />
 
-          <div style={introGridStyle}>
-            <div style={introPrimaryStyle}>
-              <h3 style={introPrimaryTitleStyle}>
-                Identify where attention may be needed
-              </h3>
-
-              <p style={bodyLargeStyle}>
-                The London Early Warning System is a
-                prioritisation tool for London playing
-                fields. It is designed to help partners
-                understand which current sites are
-                strategically important, where risk
-                signals exist and where further review or
-                intervention may be appropriate.
-              </p>
-
-              <p style={bodyTextStyle}>
-                It is an early warning and decision-support
-                framework. It does not replace detailed
-                local knowledge, planning assessment,
-                Playing Pitch Strategies or professional
-                judgement.
-              </p>
-            </div>
-
-            <div style={principlesCardStyle}>
-              <div style={cardEyebrowStyle}>
-                Core principle
-              </div>
-
-              <div style={principleHeadlineStyle}>
-                Strategic importance and risk are assessed
-                separately.
-              </div>
-
-              <p style={bodyTextStyle}>
-                A strategically important site is not
-                automatically considered at risk. Equally,
-                a site with strong risk evidence can still
-                require attention even when its strategic
-                value score is lower.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Assessment flow"
-            title="How a site moves through the assessment"
-          />
-
-          <div style={flowGridStyle}>
-            <FlowStep
+          <div style={methodFlowStyle}>
+            <MethodCard
               number="01"
-              title="Define the population"
-              text="Start with the current playing field sites included within the Phase 1.3 ranked population."
+              eyebrow="Risk assessment"
+              title="What evidence suggests the site may be vulnerable?"
+              text="Ownership, management, known at-risk intelligence and planning-pressure evidence are considered to establish the current Risk band."
+              emphasis
             />
 
-            <FlowArrow />
+            <div style={methodPlusStyle}>
+              +
+            </div>
 
-            <FlowStep
+            <MethodCard
               number="02"
-              title="Assess strategic value"
-              text="Use six strategic value criteria to understand how important the site is to current playing field provision."
+              eyebrow="Strategic value"
+              title="How important is the site to playing-field provision?"
+              text="The scale, type and strategic context of the recorded provision are assessed to establish the site's Strategic Value band."
             />
 
-            <FlowArrow />
+            <div style={methodArrowStyle}>
+              →
+            </div>
 
-            <FlowStep
+            <MethodCard
               number="03"
-              title="Assess risk exposure"
-              text="Use ownership, management, PPS intelligence and planning-pressure evidence to identify current risk signals."
+              eyebrow="Priority outcome"
+              title="What level of attention does the evidence suggest?"
+              text="Risk and Strategic Value are brought together through the risk-led priority matrix to produce the site's current outcome."
             />
+          </div>
 
-            <FlowArrow />
-
-            <FlowStep
-              number="04"
-              title="Assign priority"
-              text="Combine the strategic value band and risk band through the risk-led priority matrix."
-            />
+          <div style={methodPrincipleStyle}>
+            <strong>
+              Why risk-led?
+            </strong>{" "}
+            A site with strong risk evidence
+            should not disappear simply because
+            its Strategic Value score is lower.
+            Risk determines the escalation
+            pathway, while Strategic Value helps
+            determine the level and type of
+            response.
           </div>
         </section>
 
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Assessment population"
-            title="Which sites are included?"
-          />
-
-          <div style={scopePanelStyle}>
-            <div>
-              <div style={scopeNumberStyle}>
-                1,492
-              </div>
-
-              <div style={scopeNumberLabelStyle}>
-                current playing field sites
-              </div>
-            </div>
-
-            <div style={scopeTextWrapStyle}>
-              <p style={bodyTextStyle}>
-                Phase 1.3 ranks the current playing field
-                population carried forward from the earlier
-                phases of the project.
-              </p>
-
-              <p style={bodyTextStyle}>
-                Closed, dormant, derelict and other
-                outside-scope protection cases are not
-                forced into the Priority A, B or C ranking.
-                They are retained separately within the
-                protection and reconciliation evidence so
-                they remain visible.
-              </p>
-            </div>
-          </div>
-        </section>
+        {/* RISK FIRST */}
 
         <section style={sectionWrapStyle}>
           <SectionHeading
-            eyebrow="Strategic value"
-            title="How strategically important is the site?"
-            description="Strategic Value measures characteristics that make a playing field important to London's current provision. The six criteria are considered together to produce a Strategic Value score and band."
-          />
-
-          <div style={criteriaGridStyle}>
-            <CriterionCard
-              code="SV1"
-              title="Multi-pitch scale"
-              purpose="Recognises sites that provide a larger concentration of adult or senior grass pitch provision."
-              scoring={[
-                "2–3 qualifying pitch units: 1 point",
-                "4–5 qualifying pitch units: 2 points",
-                "6 or more qualifying pitch units: 3 points",
-              ]}
-            />
-
-            <CriterionCard
-              code="SV2"
-              title="Full-size 3G provision"
-              purpose="Recognises full-size 3G provision because of its potential strategic role in supporting wider community use and capacity."
-              scoring={[
-                "1 full-size 3G: 2 points",
-                "2 or more full-size 3Gs: 3 points",
-              ]}
-            />
-
-            <CriterionCard
-              code="SV3"
-              title="Strategic sport provision"
-              purpose="Recognises strategically important pitch provision such as cricket, hockey, rugby and other agreed strategic pitch sports."
-              scoring={[
-                "Score reflects the presence of strategic facility types",
-                "Multiple qualifying facility types can increase the score",
-              ]}
-            />
-
-            <CriterionCard
-              code="SV4"
-              title="Share of borough provision"
-              purpose="Identifies sites that account for a significant share of the relevant recorded playing field provision within their borough."
-              scoring={[
-                "5% or more of relevant borough supply: 1 point",
-                "10% or more: 2 points",
-                "15% or more: 3 points",
-              ]}
-            />
-
-            <CriterionCard
-              code="SV5"
-              title="Inner London"
-              purpose="Recognises the particularly constrained playing field supply and reduced availability of alternatives within Inner London."
-              scoring={[
-                "Inner London site: 2 points",
-              ]}
-            />
-
-            <CriterionCard
-              code="SV6"
-              title="Deprivation"
-              purpose="Introduces an inequalities lens by recognising sites located within more deprived communities."
-              scoring={[
-                "IMD deciles 1–3: 2 points",
-                "IMD deciles 4–5: 1 point",
-                "Other deciles: 0 points",
-              ]}
-            />
-          </div>
-
-          <div style={bandPanelStyle}>
-            <div style={bandPanelIntroStyle}>
-              <div style={cardEyebrowStyle}>
-                Strategic Value bands
-              </div>
-
-              <h3 style={bandPanelTitleStyle}>
-                The combined score is translated into a
-                simple strategic band.
-              </h3>
-            </div>
-
-            <div style={bandGridStyle}>
-              <BandCard
-                value="9–13"
-                label="High"
-              />
-
-              <BandCard
-                value="5–8"
-                label="Medium"
-              />
-
-              <BandCard
-                value="1–4"
-                label="Low"
-              />
-
-              <BandCard
-                value="0"
-                label="Not flagged"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Risk exposure"
+            eyebrow="1. Risk assessment"
             title="What current risk signals are present?"
-            description="Risk is assessed separately from strategic importance. The model currently uses four risk factors."
+            description="Four evidence areas contribute to the current Risk assessment. The codes are retained for traceability, but the assessment is presented here in plain language."
           />
 
           <div style={criteriaGridStyle}>
-            <CriterionCard
+            <AssessmentCriterion
               code="RF1"
               title="Ownership exposure"
-              purpose="Groups ownership types according to their relative exposure to potential loss, reduced access or change."
-              scoring={[
-                "Lower exposure: 0",
-                "Medium exposure: 1",
-                "Higher exposure: 2",
-              ]}
+              question="Does the ownership arrangement indicate greater exposure to loss, reduced access or change?"
+              source="Ownership evidence associated with the current site record."
+              interpretation="Ownership categories are grouped according to their relative exposure within the current risk model."
             />
 
-            <CriterionCard
+            <AssessmentCriterion
               code="RF2"
               title="Management exposure"
-              purpose="Considers whether the current management arrangement creates additional exposure to loss or reduced access."
-              scoring={[
-                "Lower exposure: 0",
-                "Medium exposure: 1",
-                "Higher exposure: 2",
-              ]}
+              question="Does the way the site is currently managed indicate additional exposure?"
+              source="Management evidence associated with the current site record."
+              interpretation="Management arrangements are classified consistently according to their relative risk exposure."
             />
 
-            <CriterionCard
+            <AssessmentCriterion
               code="RF3"
-              title="PPS known at-risk evidence"
-              purpose="Uses relevant Playing Pitch Strategy and known at-risk intelligence to identify sites where an active concern is already recorded."
-              scoring={[
-                "Known at-risk evidence materially increases the risk assessment",
-                "No known at-risk evidence does not add an RF3 score",
-              ]}
+              title="Known at-risk evidence"
+              question="Has the site already been identified through established playing-pitch or protection intelligence as being at risk?"
+              source="Playing Pitch Strategy and reconciled known at-risk evidence."
+              interpretation="Relevant known at-risk evidence materially increases the current Risk assessment."
             />
 
-            <CriterionCard
+            <AssessmentCriterion
               code="RF6"
               title="Planning pressure"
-              purpose="Uses Planning London Datahub evidence to identify credible site-linked planning pressure while avoiding over-escalation from general nearby development."
-              scoring={[
-                "Strong site-linked evidence: RF6 score 3",
-                "Very close sport or playing-field context: RF6 score 1",
-                "Weaker nearby evidence: retained for review only",
-                "No relevant evidence: RF6 score 0",
-              ]}
+              question="Is there sufficiently strong site-linked planning evidence to contribute to the current risk assessment?"
+              source="London planning application evidence linked to assessed sites."
+              interpretation="Planning evidence is treated cautiously. Nearby applications alone do not automatically increase Risk."
             />
+          </div>
+
+          <div style={riskBandPanelStyle}>
+            <div>
+              <div style={cardEyebrowStyle}>
+                Current Risk bands
+              </div>
+
+              <h3 style={riskBandTitleStyle}>
+                The assessment distinguishes
+                four current levels of Risk.
+              </h3>
+            </div>
+
+            <div style={riskBandGridStyle}>
+              <RiskBandCard
+                label="High"
+                value={overview.risk.high}
+                tone="high"
+              />
+
+              <RiskBandCard
+                label="Medium"
+                value={overview.risk.medium}
+                tone="medium"
+              />
+
+              <RiskBandCard
+                label="Low"
+                value={lowRisk}
+                tone="low"
+              />
+
+              <RiskBandCard
+                label="No current risk signal"
+                value={
+                  overview.risk.noCurrentRisk
+                }
+                tone="none"
+              />
+            </div>
           </div>
         </section>
 
+        {/* STRATEGIC VALUE */}
+
         <section style={sectionWrapStyle}>
           <SectionHeading
-            eyebrow="Risk-led prioritisation"
-            title="How the final priority category is assigned"
-            description="The final category is determined from the combination of Strategic Value and Risk. Risk is deliberately allowed to elevate sites even when strategic value is lower."
+            eyebrow="2. Strategic value"
+            title="How important is the site to playing-field provision?"
+            description="Strategic Value is assessed independently from Risk. It describes characteristics that make a site particularly important within the current playing-field network."
+          />
+
+          <div style={criteriaGridStyle}>
+            <AssessmentCriterion
+              code="SV1"
+              title="Multi-pitch scale"
+              question="Does the site provide a significant concentration of adult or senior grass-pitch provision?"
+              source="Recorded playing-field provision."
+              interpretation="Larger concentrations of relevant pitch provision increase strategic importance."
+            />
+
+            <AssessmentCriterion
+              code="SV2"
+              title="Full-size 3G provision"
+              question="Does the site provide full-size 3G provision?"
+              source="Recorded facility provision."
+              interpretation="Full-size 3G provision is recognised because of its potential strategic role in capacity and community use."
+            />
+
+            <AssessmentCriterion
+              code="SV3"
+              title="Strategic sport provision"
+              question="Does the site support strategically important pitch sports?"
+              source="Recorded grass and artificial pitch provision."
+              interpretation="The assessment recognises strategic sports and facility types that may be difficult to replace."
+            />
+
+            <AssessmentCriterion
+              code="SV4"
+              title="Share of borough provision"
+              question="Does the site account for a significant share of relevant recorded provision within its borough?"
+              source="Borough-level provision derived from the assessed population."
+              interpretation="Sites making a larger contribution to local supply receive greater strategic consideration."
+            />
+
+            <AssessmentCriterion
+              code="SV5"
+              title="Inner London context"
+              question="Is the site located where playing-field supply is particularly constrained?"
+              source="London geographic classification."
+              interpretation="Inner London context is recognised because alternative playing-field provision is generally more constrained."
+            />
+
+            <AssessmentCriterion
+              code="SV6"
+              title="Deprivation"
+              question="Does the site serve a more deprived community context?"
+              source="Index of Multiple Deprivation."
+              interpretation="Deprivation provides an inequalities lens within the Strategic Value assessment."
+            />
+          </div>
+
+          <div style={thresholdNoticeStyle}>
+            <div style={thresholdIconStyle}>
+              i
+            </div>
+
+            <div>
+              <strong>
+                Detailed scoring rules
+              </strong>
+
+              <div style={thresholdTextStyle}>
+                The current system retains the
+                underlying criterion scores for
+                audit and site-level review.
+                Detailed numerical thresholds
+                should only be published here
+                once they have been formally
+                verified against the implemented
+                calculation rules.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* MATRIX */}
+
+        <section style={sectionWrapStyle}>
+          <SectionHeading
+            eyebrow="3. Priority outcome"
+            title="How Risk and Strategic Value determine the outcome"
+            description="The matrix is deliberately presented with Risk first. Risk determines the escalation pathway; Strategic Value then distinguishes the appropriate level of attention."
           />
 
           <div style={matrixCardStyle}>
@@ -342,102 +595,128 @@ export default function AboutPage() {
                 <thead>
                   <tr>
                     <th style={matrixCornerStyle}>
-                      Strategic Value
+                      Risk ↓ / Strategic Value →
                     </th>
 
                     <th style={matrixHeaderStyle}>
-                      High Risk
+                      High
                     </th>
 
                     <th style={matrixHeaderStyle}>
-                      Medium Risk
+                      Medium
                     </th>
 
                     <th style={matrixHeaderStyle}>
-                      Low Risk
+                      Low
                     </th>
 
                     <th style={matrixHeaderStyle}>
-                      No current risk signal
+                      Not flagged
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr>
-                    <th style={matrixRowHeaderStyle}>
-                      High
+                    <th style={matrixRiskHeaderStyle}>
+                      High Risk
                     </th>
 
                     <MatrixCell
-                      category="Priority A"
-                      tone="a"
+                      label="Priority A"
+                      tone="priorityA"
                     />
 
                     <MatrixCell
-                      category="Priority C"
-                      tone="c"
+                      label="Priority A"
+                      tone="priorityA"
                     />
 
                     <MatrixCell
-                      category="Strategic Monitor"
-                      tone="strategic"
+                      label="Priority B"
+                      tone="priorityB"
                     />
 
                     <MatrixCell
-                      category="Strategic Monitor"
-                      tone="strategic"
+                      label="Priority B"
+                      tone="priorityB"
                     />
                   </tr>
 
                   <tr>
-                    <th style={matrixRowHeaderStyle}>
-                      Medium
+                    <th style={matrixRiskHeaderStyle}>
+                      Medium Risk
                     </th>
 
                     <MatrixCell
-                      category="Priority A"
-                      tone="a"
+                      label="Priority C"
+                      tone="priorityC"
                     />
 
                     <MatrixCell
-                      category="Priority C"
-                      tone="c"
+                      label="Priority C"
+                      tone="priorityC"
                     />
 
                     <MatrixCell
-                      category="Monitor"
-                      tone="monitor"
-                    />
-
-                    <MatrixCell
-                      category="Monitor"
-                      tone="monitor"
-                    />
-                  </tr>
-
-                  <tr>
-                    <th style={matrixRowHeaderStyle}>
-                      Low / Not flagged
-                    </th>
-
-                    <MatrixCell
-                      category="Priority B"
-                      tone="b"
-                    />
-
-                    <MatrixCell
-                      category="Risk Review"
+                      label="Risk Review"
                       tone="review"
                     />
 
                     <MatrixCell
-                      category="Monitor"
+                      label="Risk Review"
+                      tone="review"
+                    />
+                  </tr>
+
+                  <tr>
+                    <th style={matrixRiskHeaderStyle}>
+                      Low Risk
+                    </th>
+
+                    <MatrixCell
+                      label="Strategic Monitor"
+                      tone="strategic"
+                    />
+
+                    <MatrixCell
+                      label="Monitor"
                       tone="monitor"
                     />
 
                     <MatrixCell
-                      category="Monitor"
+                      label="Monitor"
+                      tone="monitor"
+                    />
+
+                    <MatrixCell
+                      label="Monitor"
+                      tone="monitor"
+                    />
+                  </tr>
+
+                  <tr>
+                    <th style={matrixRiskHeaderStyle}>
+                      No current risk signal
+                    </th>
+
+                    <MatrixCell
+                      label="Strategic Monitor"
+                      tone="strategic"
+                    />
+
+                    <MatrixCell
+                      label="Monitor"
+                      tone="monitor"
+                    />
+
+                    <MatrixCell
+                      label="Monitor"
+                      tone="monitor"
+                    />
+
+                    <MatrixCell
+                      label="Monitor"
                       tone="monitor"
                     />
                   </tr>
@@ -449,194 +728,332 @@ export default function AboutPage() {
           <div style={priorityExplanationGridStyle}>
             <PriorityExplanation
               label="Priority A"
-              tone="a"
-              text="High risk combined with Medium or High Strategic Value. These sites represent the highest current strategic attention."
+              tone="priorityA"
+              value={
+                overview.priorities.priorityA
+              }
+              text="High Risk combined with High or Medium Strategic Value. These sites represent the highest current strategic attention."
             />
 
             <PriorityExplanation
               label="Priority B"
-              tone="b"
-              text="High risk combined with lower Strategic Value. The risk-led approach keeps these sites visible rather than excluding them."
+              tone="priorityB"
+              value={
+                overview.priorities.priorityB
+              }
+              text="High Risk combined with lower Strategic Value. The risk-led approach keeps these sites within an active priority pathway."
             />
 
             <PriorityExplanation
               label="Priority C"
-              tone="c"
-              text="Medium risk combined with Medium or High Strategic Value."
-            />
-
-            <PriorityExplanation
-              label="Strategic Monitor"
-              tone="strategic"
-              text="High Strategic Value with Low or no current risk signal. These assets remain important even without current escalation."
+              tone="priorityC"
+              value={
+                overview.priorities.priorityC
+              }
+              text="Medium Risk combined with High or Medium Strategic Value."
             />
 
             <PriorityExplanation
               label="Risk Review"
               tone="review"
-              text="Medium risk with lower Strategic Value. The evidence warrants review but is not treated as a confirmed active priority."
+              value={
+                overview.priorities.riskReview
+              }
+              text="Medium Risk combined with lower Strategic Value. The evidence warrants review without implying a confirmed site-loss threat."
+            />
+
+            <PriorityExplanation
+              label="Strategic Monitor"
+              tone="strategic"
+              value={
+                overview.priorities
+                  .strategicMonitor
+              }
+              text="High Strategic Value with only Low or no current Risk signal. These important assets remain under observation."
             />
 
             <PriorityExplanation
               label="Monitor"
               tone="monitor"
-              text="Sites retained in the monitoring population where the current combination of risk and strategic value does not require escalation."
+              value={
+                overview.priorities.monitor
+              }
+              text="The current combination of Risk and Strategic Value does not require escalation, but the site remains within the monitored population."
             />
           </div>
         </section>
+
+        {/* PLANNING ASSURANCE */}
 
         <section style={sectionWrapStyle}>
           <SectionHeading
-            eyebrow="Planning pressure"
-            title="How planning evidence is treated"
-            description="Planning evidence is intentionally handled cautiously because nearby development does not automatically mean a playing field is threatened."
+            eyebrow="Planning evidence assurance"
+            title="Finding planning evidence does not automatically mean a site is at risk"
+            description="Planning evidence is deliberately separated into evidence discovery, review and evidence strong enough to contribute to the RF6 risk factor."
           />
 
-          <div style={planningFlowStyle}>
-            <PlanningStep
-              number="01"
-              title="Planning evidence identified"
-              text="Applications and planning records with potential relevance to a playing field are identified."
-            />
+          <div style={planningAssuranceStyle}>
+            <div style={planningMetricStyle}>
+              <div style={planningMetricNumberStyle}>
+                {formatNumber(
+                  overview.planning
+                    .planningReviewEvidenceSites
+                )}
+              </div>
 
-            <PlanningStep
-              number="02"
-              title="Evidence reviewed"
-              text="The relationship between the planning record and the site is assessed. General nearby development is not automatically treated as a risk."
-            />
+              <div style={planningMetricTitleStyle}>
+                sites with planning evidence
+                identified
+              </div>
 
-            <PlanningStep
-              number="03"
-              title="Cautious RF6 score"
-              text="Only sufficiently strong or very close site-linked evidence contributes to the RF6 planning-pressure score."
-            />
+              <div style={planningMetricTextStyle}>
+                Potentially relevant planning
+                evidence has been identified and
+                retained for assessment or
+                review.
+              </div>
+            </div>
 
-            <PlanningStep
-              number="04"
-              title="Review-only evidence retained"
-              text="Weaker evidence remains visible for manual review without automatically increasing the site's risk score."
-            />
+            <div style={planningOperatorStyle}>
+              →
+            </div>
+
+            <div style={planningMetricStyle}>
+              <div style={planningMetricNumberStyle}>
+                {formatNumber(
+                  Math.max(
+                    planningReviewOnly,
+                    0
+                  )
+                )}
+              </div>
+
+              <div style={planningMetricTitleStyle}>
+                review-only sites
+              </div>
+
+              <div style={planningMetricTextStyle}>
+                Planning evidence is visible,
+                but it does not currently
+                contribute an RF6 planning-risk
+                score.
+              </div>
+            </div>
+
+            <div style={planningPlusStyle}>
+              +
+            </div>
+
+            <div
+              style={{
+                ...planningMetricStyle,
+                ...planningScoredStyle,
+              }}
+            >
+              <div style={planningMetricNumberStyle}>
+                {formatNumber(
+                  overview.planning
+                    .confirmedRf6Sites
+                )}
+              </div>
+
+              <div style={planningMetricTitleStyle}>
+                sites with scored RF6 evidence
+              </div>
+
+              <div style={planningMetricTextStyle}>
+                Evidence met the cautious
+                site-linked rules required to
+                contribute to the Risk
+                assessment.
+              </div>
+            </div>
           </div>
 
-          <div style={planningExampleStyle}>
-            <div style={planningExampleHeaderStyle}>
-              Why this distinction matters
-            </div>
-
-            <div style={planningExampleGridStyle}>
-              <div style={planningExampleItemStyle}>
-                <div style={planningExampleNumberStyle}>
-                  446
-                </div>
-
-                <div style={planningExampleLabelStyle}>
-                  sites currently have planning evidence
-                  identified for review
-                </div>
-              </div>
-
-              <div style={planningDividerStyle}>
-                ≠
-              </div>
-
-              <div style={planningExampleItemStyle}>
-                <div style={planningExampleNumberStyle}>
-                  28
-                </div>
-
-                <div style={planningExampleLabelStyle}>
-                  sites currently have a scored RF6
-                  planning signal
-                </div>
-              </div>
-            </div>
-
-            <p style={planningCautionTextStyle}>
-              A planning candidate is therefore not the
-              same as a confirmed planning threat. The
-              system separates evidence discovery from
-              evidence strong enough to contribute to the
-              risk assessment.
-            </p>
+          <div style={planningStatementStyle}>
+            <strong>
+              Key assurance:
+            </strong>{" "}
+            a nearby planning application is not
+            automatically treated as a planning
+            threat. Only evidence meeting the
+            defined RF6 rules contributes to the
+            Risk score. Other potentially
+            relevant evidence remains visible
+            for review.
           </div>
         </section>
+
+        {/* SOURCES */}
 
         <section style={sectionWrapStyle}>
           <SectionHeading
-            eyebrow="Evidence transparency"
-            title="What happens when evidence is incomplete or uncertain?"
+            eyebrow="Evidence base"
+            title="What information supports the assessment?"
+            description="The system brings together multiple evidence sources rather than relying on a single dataset."
           />
 
-          <div style={transparencyGridStyle}>
-            <TransparencyCard
-              title="Review flags remain visible"
-              text="Sites with missing, conflicting or unusual evidence can be flagged for further review rather than silently treated as complete."
+          <div style={sourceGridStyle}>
+            <SourceCard
+              title="Active Places"
+              text="Provides the core site and facility evidence used to identify and describe current sports provision."
             />
 
-            <TransparencyCard
-              title="Planning evidence is traceable"
-              text="Detailed planning evidence is retained separately from the site-level priority so individual applications can be reviewed."
+            <SourceCard
+              title="Playing Pitch Strategy evidence"
+              text="Provides local playing-pitch context, known at-risk intelligence and supporting site evidence where available."
             />
 
-            <TransparencyCard
-              title="PPS evidence is reconciled"
-              text="Known at-risk PPS records are reconciled against the current ranked population, including cases that sit outside the current ranking scope."
+            <SourceCard
+              title="Planning evidence"
+              text="London planning application evidence is linked cautiously to sites to support the RF6 planning-pressure assessment."
             />
 
-            <TransparencyCard
-              title="The model supports judgement"
-              text="The priority category is an evidence-led starting point for discussion and action. It is not intended to replace local professional knowledge."
+            <SourceCard
+              title="Index of Multiple Deprivation"
+              text="Provides the deprivation context used within the Strategic Value assessment."
+            />
+
+            <SourceCard
+              title="Geographic context"
+              text="Borough and London geography are used to understand local supply and the constrained Inner London context."
+            />
+
+            <SourceCard
+              title="Protection intelligence"
+              text="Known protection and at-risk evidence is reconciled against the current assessed population rather than being discarded when records do not align perfectly."
             />
           </div>
         </section>
 
-        <section style={limitationsStyle}>
+        {/* ASSURANCE */}
+
+        <section style={sectionWrapStyle}>
+          <SectionHeading
+            eyebrow="Data assurance"
+            title="How do we make the results auditable?"
+          />
+
+          <div style={assuranceGridStyle}>
+            <AssuranceCard
+              title="One site, one assessed record"
+              value={overview.assessedSites}
+              text="The current assessment is structured at site level so every assessed site has a single current outcome."
+            />
+
+            <AssuranceCard
+              title="Categories reconcile"
+              value={
+                validation?.categoryTotal ??
+                overview.assessedSites
+              }
+              text="The six current priority and monitoring categories reconcile back to the assessed population."
+            />
+
+            <AssuranceCard
+              title="PPS-linked sites"
+              value={
+                overview.evidence
+                  .ppsLinkedSites
+              }
+              text="Sites with a current link to Playing Pitch Strategy evidence."
+            />
+
+            <AssuranceCard
+              title="Review required"
+              value={
+                overview.evidence
+                  .reviewRequiredSites
+              }
+              text="Records where the current evidence indicates that additional review is required."
+            />
+          </div>
+
+          <div style={assurancePrinciplesStyle}>
+            <AssurancePrinciple
+              title="Missing evidence is not hidden"
+              text="Missing or uncertain data can be surfaced through explicit review and data-quality flags."
+            />
+
+            <AssurancePrinciple
+              title="Evidence and outcome remain separate"
+              text="Planning candidates, PPS evidence and other supporting signals remain visible rather than being collapsed into a single unexplained score."
+            />
+
+            <AssurancePrinciple
+              title="Exceptions are retained"
+              text="Known protection records that do not fit cleanly into the current assessed population remain available through reconciliation rather than being forced into a category."
+            />
+
+            <AssurancePrinciple
+              title="The assessment can be traced"
+              text="Site-level records expose the Risk factors, Strategic Value factors and evidence context behind the current outcome."
+            />
+          </div>
+        </section>
+
+        {/* INTERPRETATION */}
+
+        <section style={interpretationStyle}>
           <div>
-            <div style={limitationsEyebrowStyle}>
-              Important to understand
+            <div style={interpretationEyebrowStyle}>
+              How to interpret the result
             </div>
 
-            <h2 style={limitationsTitleStyle}>
-              This is an early warning system, not a
-              prediction of site loss.
+            <h2 style={interpretationTitleStyle}>
+              This is an early-warning system,
+              not a prediction of site loss.
             </h2>
           </div>
 
-          <div style={limitationsTextWrapStyle}>
-            <p style={limitationsTextStyle}>
-              A high priority category means that the
-              current combination of strategic importance
-              and risk evidence warrants greater attention.
-              It does not mean that loss or redevelopment is
-              certain.
+          <div style={interpretationTextWrapStyle}>
+            <p style={interpretationTextStyle}>
+              A Priority category means that
+              the current combination of Risk
+              and Strategic Value warrants a
+              greater level of attention. It
+              does not mean that redevelopment,
+              closure or loss is certain.
             </p>
 
-            <p style={limitationsTextStyle}>
-              Likewise, a Monitor category does not mean
-              that a site is unimportant. The assessment is
-              designed to support proportionate monitoring
-              and help partners focus attention where the
-              available evidence indicates it may be most
-              useful.
+            <p style={interpretationTextStyle}>
+              Likewise, a Monitor category does
+              not mean that a site is
+              unimportant. Monitoring is an
+              explicit outcome within the
+              framework and allows emerging
+              evidence to be reviewed over time.
+            </p>
+
+            <p style={interpretationTextStyle}>
+              The assessment supports
+              professional judgement and
+              prioritisation. It does not replace
+              local planning assessment,
+              Playing Pitch Strategies or
+              stakeholder knowledge.
             </p>
           </div>
         </section>
+
+        {/* CTA */}
 
         <section style={ctaStyle}>
           <div>
             <div style={ctaEyebrowStyle}>
-              See the assessment in practice
+              See the evidence in practice
             </div>
 
             <h2 style={ctaTitleStyle}>
-              Explore the current London playing field
-              population.
+              Explore the current site
+              assessments.
             </h2>
 
             <p style={ctaTextStyle}>
-              View current priorities, filter by borough or
-              risk and open individual site records to see
-              the evidence behind each assessment.
+              Search by site, borough, priority
+              or risk and open an individual
+              site record to see the evidence
+              behind its current assessment.
             </p>
           </div>
 
@@ -651,6 +1068,10 @@ export default function AboutPage() {
     </AppShell>
   );
 }
+
+/* =========================================================
+   COMPONENTS
+   ========================================================= */
 
 function SectionHeading({
   eyebrow,
@@ -682,50 +1103,79 @@ function SectionHeading({
   );
 }
 
-function FlowStep({
-  number,
-  title,
-  text,
+function HeadlineMetric({
+  value,
+  label,
 }: {
-  number: string;
-  title: string;
-  text: string;
+  value: number;
+  label: string;
 }) {
   return (
-    <div style={flowStepStyle}>
-      <div style={flowNumberStyle}>
+    <div style={headlineMetricStyle}>
+      <div style={headlineValueStyle}>
+        {formatNumber(value)}
+      </div>
+
+      <div style={headlineLabelStyle}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function MethodCard({
+  number,
+  eyebrow,
+  title,
+  text,
+  emphasis = false,
+}: {
+  number: string;
+  eyebrow: string;
+  title: string;
+  text: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <article
+      style={{
+        ...methodCardStyle,
+        ...(emphasis
+          ? methodCardEmphasisStyle
+          : {}),
+      }}
+    >
+      <div style={methodNumberStyle}>
         {number}
       </div>
 
-      <h3 style={flowTitleStyle}>
+      <div style={methodEyebrowStyle}>
+        {eyebrow}
+      </div>
+
+      <h3 style={methodTitleStyle}>
         {title}
       </h3>
 
-      <p style={flowTextStyle}>
+      <p style={methodTextStyle}>
         {text}
       </p>
-    </div>
+    </article>
   );
 }
 
-function FlowArrow() {
-  return (
-    <div style={flowArrowStyle}>
-      →
-    </div>
-  );
-}
-
-function CriterionCard({
+function AssessmentCriterion({
   code,
   title,
-  purpose,
-  scoring,
+  question,
+  source,
+  interpretation,
 }: {
   code: string;
   title: string;
-  purpose: string;
-  scoring: string[];
+  question: string;
+  source: string;
+  interpretation: string;
 }) {
   return (
     <article style={criterionCardStyle}>
@@ -739,44 +1189,66 @@ function CriterionCard({
         {title}
       </h3>
 
-      <p style={criterionPurposeStyle}>
-        {purpose}
-      </p>
+      <div style={criterionQuestionStyle}>
+        {question}
+      </div>
 
       <div style={criterionDividerStyle} />
 
-      <div style={criterionScoringLabelStyle}>
-        How it contributes
-      </div>
+      <CriterionDetail
+        label="Evidence"
+        value={source}
+      />
 
-      <ul style={criterionListStyle}>
-        {scoring.map((item) => (
-          <li
-            key={item}
-            style={criterionListItemStyle}
-          >
-            {item}
-          </li>
-        ))}
-      </ul>
+      <CriterionDetail
+        label="How it is interpreted"
+        value={interpretation}
+      />
     </article>
   );
 }
 
-function BandCard({
-  value,
+function CriterionDetail({
   label,
+  value,
 }: {
-  value: string;
   label: string;
+  value: string;
 }) {
   return (
-    <div style={bandCardStyle}>
-      <div style={bandValueStyle}>
-        {value}
+    <div style={criterionDetailStyle}>
+      <div style={criterionDetailLabelStyle}>
+        {label}
       </div>
 
-      <div style={bandLabelStyle}>
+      <div style={criterionDetailValueStyle}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function RiskBandCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "high" | "medium" | "low" | "none";
+}) {
+  return (
+    <div
+      style={{
+        ...riskBandCardStyle,
+        ...getRiskTone(tone),
+      }}
+    >
+      <div style={riskBandValueStyle}>
+        {formatNumber(value)}
+      </div>
+
+      <div style={riskBandLabelStyle}>
         {label}
       </div>
     </div>
@@ -784,27 +1256,21 @@ function BandCard({
 }
 
 function MatrixCell({
-  category,
+  label,
   tone,
 }: {
-  category: string;
-  tone:
-    | "a"
-    | "b"
-    | "c"
-    | "strategic"
-    | "review"
-    | "monitor";
+  label: string;
+  tone: Tone;
 }) {
   return (
     <td style={matrixCellStyle}>
       <span
         style={{
-          ...matrixBadgeBaseStyle,
+          ...matrixBadgeStyle,
           ...getPriorityTone(tone),
         }}
       >
-        {category}
+        {label}
       </span>
     </td>
   );
@@ -812,29 +1278,31 @@ function MatrixCell({
 
 function PriorityExplanation({
   label,
-  text,
   tone,
+  value,
+  text,
 }: {
   label: string;
+  tone: Tone;
+  value: number;
   text: string;
-  tone:
-    | "a"
-    | "b"
-    | "c"
-    | "strategic"
-    | "review"
-    | "monitor";
 }) {
   return (
     <article style={priorityExplanationStyle}>
-      <span
-        style={{
-          ...matrixBadgeBaseStyle,
-          ...getPriorityTone(tone),
-        }}
-      >
-        {label}
-      </span>
+      <div style={priorityExplanationHeaderStyle}>
+        <span
+          style={{
+            ...matrixBadgeStyle,
+            ...getPriorityTone(tone),
+          }}
+        >
+          {label}
+        </span>
+
+        <strong style={priorityCountStyle}>
+          {formatNumber(value)}
+        </strong>
+      </div>
 
       <p style={priorityExplanationTextStyle}>
         {text}
@@ -843,33 +1311,53 @@ function PriorityExplanation({
   );
 }
 
-function PlanningStep({
-  number,
+function SourceCard({
   title,
   text,
 }: {
-  number: string;
   title: string;
   text: string;
 }) {
   return (
-    <article style={planningStepStyle}>
-      <div style={planningStepNumberStyle}>
-        {number}
-      </div>
-
-      <h3 style={planningStepTitleStyle}>
+    <article style={sourceCardStyle}>
+      <h3 style={sourceTitleStyle}>
         {title}
       </h3>
 
-      <p style={planningStepTextStyle}>
+      <p style={sourceTextStyle}>
         {text}
       </p>
     </article>
   );
 }
 
-function TransparencyCard({
+function AssuranceCard({
+  title,
+  value,
+  text,
+}: {
+  title: string;
+  value: number;
+  text: string;
+}) {
+  return (
+    <article style={assuranceCardStyle}>
+      <div style={assuranceValueStyle}>
+        {formatNumber(value)}
+      </div>
+
+      <h3 style={assuranceTitleStyle}>
+        {title}
+      </h3>
+
+      <p style={assuranceTextStyle}>
+        {text}
+      </p>
+    </article>
+  );
+}
+
+function AssurancePrinciple({
   title,
   text,
 }: {
@@ -877,45 +1365,49 @@ function TransparencyCard({
   text: string;
 }) {
   return (
-    <article style={transparencyCardStyle}>
-      <div style={transparencyIconStyle}>
+    <div style={assurancePrincipleStyle}>
+      <div style={assuranceTickStyle}>
         ✓
       </div>
 
-      <h3 style={transparencyTitleStyle}>
-        {title}
-      </h3>
+      <div>
+        <div style={assurancePrincipleTitleStyle}>
+          {title}
+        </div>
 
-      <p style={transparencyTextStyle}>
-        {text}
-      </p>
-    </article>
+        <div style={assurancePrincipleTextStyle}>
+          {text}
+        </div>
+      </div>
+    </div>
   );
 }
 
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+function formatNumber(value: number) {
+  return value.toLocaleString("en-GB");
+}
+
 function getPriorityTone(
-  tone:
-    | "a"
-    | "b"
-    | "c"
-    | "strategic"
-    | "review"
-    | "monitor"
-) {
+  tone: Tone
+): React.CSSProperties {
   switch (tone) {
-    case "a":
+    case "priorityA":
       return {
         background: "#242424",
         color: "#ffffff",
       };
 
-    case "b":
+    case "priorityB":
       return {
         background: "#b96800",
         color: "#ffffff",
       };
 
-    case "c":
+    case "priorityC":
       return {
         background: "#f2d7a7",
         color: "#5f3900",
@@ -941,10 +1433,58 @@ function getPriorityTone(
   }
 }
 
+function getRiskTone(
+  tone: "high" | "medium" | "low" | "none"
+): React.CSSProperties {
+  switch (tone) {
+    case "high":
+      return {
+        background: "#ffe5cf",
+        color: "#803600",
+      };
+
+    case "medium":
+      return {
+        background: "#fff2c7",
+        color: "#665100",
+      };
+
+    case "low":
+      return {
+        background: "#e9eef4",
+        color: "#40566d",
+      };
+
+    default:
+      return {
+        background: "#e7efea",
+        color: "#365746",
+      };
+  }
+}
+
+/* =========================================================
+   STYLES
+   ========================================================= */
+
 const pageStyle: React.CSSProperties = {
   maxWidth: "1440px",
   margin: "0 auto",
   padding: "38px 28px 90px",
+};
+
+const loadingStyle: React.CSSProperties = {
+  padding: "80px 0",
+  color: "#666666",
+};
+
+const errorStyle: React.CSSProperties = {
+  marginTop: "30px",
+  padding: "20px",
+  borderRadius: "12px",
+  background: "#fff0f0",
+  border: "1px solid #efb9bb",
+  color: "#7d2025",
 };
 
 const heroStyle: React.CSSProperties = {
@@ -966,7 +1506,7 @@ const heroEyebrowStyle: React.CSSProperties = {
 };
 
 const heroTitleStyle: React.CSSProperties = {
-  maxWidth: "940px",
+  maxWidth: "980px",
   margin: "12px 0 18px",
   fontSize: "clamp(42px, 6vw, 72px)",
   lineHeight: 0.99,
@@ -975,17 +1515,17 @@ const heroTitleStyle: React.CSSProperties = {
 };
 
 const heroTextStyle: React.CSSProperties = {
-  maxWidth: "820px",
+  maxWidth: "850px",
+  margin: 0,
   color: "#c4c4c4",
   fontSize: "17px",
   lineHeight: 1.65,
-  margin: 0,
 };
 
 const heroActionsStyle: React.CSSProperties = {
   display: "flex",
-  gap: "10px",
   flexWrap: "wrap",
+  gap: "10px",
   marginTop: "28px",
 };
 
@@ -1010,14 +1550,14 @@ const secondaryActionStyle: React.CSSProperties = {
 };
 
 const sectionWrapStyle: React.CSSProperties = {
-  marginBottom: "54px",
+  marginBottom: "56px",
 };
 
 const sectionHeadingStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(0, 1fr) minmax(300px, 0.75fr)",
-  gap: "40px",
+    "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: "32px",
   alignItems: "end",
   marginBottom: "22px",
 };
@@ -1031,44 +1571,121 @@ const sectionEyebrowStyle: React.CSSProperties = {
 };
 
 const sectionTitleStyle: React.CSSProperties = {
+  maxWidth: "820px",
   margin: "6px 0 0",
-  maxWidth: "800px",
   fontSize: "32px",
   lineHeight: 1.08,
   letterSpacing: "-0.036em",
 };
 
 const sectionDescriptionStyle: React.CSSProperties = {
+  maxWidth: "720px",
   margin: 0,
   color: "#666666",
   fontSize: "13px",
   lineHeight: 1.65,
 };
 
-const introGridStyle: React.CSSProperties = {
+const headlineGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(0, 1.5fr) minmax(300px, 0.7fr)",
-  gap: "20px",
+    "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: "14px",
 };
 
-const introPrimaryStyle: React.CSSProperties = {
+const headlineMetricStyle: React.CSSProperties = {
   background: "#ffffff",
   border: "1px solid #e2ded9",
+  borderRadius: "15px",
+  padding: "22px",
+};
+
+const headlineValueStyle: React.CSSProperties = {
+  fontSize: "42px",
+  lineHeight: 1,
+  fontWeight: 900,
+  letterSpacing: "-0.045em",
+};
+
+const headlineLabelStyle: React.CSSProperties = {
+  marginTop: "8px",
+  color: "#666666",
+  fontSize: "12px",
+  lineHeight: 1.45,
+};
+
+const validationPanelStyle: React.CSSProperties = {
+  marginTop: "14px",
+  background: "#e7efea",
+  color: "#365746",
+  border: "1px solid #cadbce",
+  borderRadius: "14px",
+  padding: "20px 22px",
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "22px",
+};
+
+const validationLabelStyle: React.CSSProperties = {
+  textTransform: "uppercase",
+  fontSize: "9px",
+  fontWeight: 850,
+  letterSpacing: "0.08em",
+};
+
+const validationHeadlineStyle: React.CSSProperties = {
+  marginTop: "4px",
+  fontWeight: 800,
+  fontSize: "13px",
+};
+
+const validationMathStyle: React.CSSProperties = {
+  fontSize: "12px",
+};
+
+const validationEqualsStyle: React.CSSProperties = {
+  padding: "0 10px",
+  fontWeight: 900,
+};
+
+const scopeGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: "18px",
+};
+
+const scopePrimaryStyle: React.CSSProperties = {
+  background: "#171717",
+  color: "#ffffff",
   borderRadius: "18px",
   padding: "30px",
 };
 
-const introPrimaryTitleStyle: React.CSSProperties = {
-  fontSize: "24px",
-  letterSpacing: "-0.03em",
-  margin: "0 0 13px",
-};
-
-const principlesCardStyle: React.CSSProperties = {
+const scopeSecondaryStyle: React.CSSProperties = {
   background: "#f1ede8",
   borderRadius: "18px",
   padding: "30px",
+};
+
+const scopeNumberStyle: React.CSSProperties = {
+  fontSize: "58px",
+  fontWeight: 900,
+  letterSpacing: "-0.05em",
+};
+
+const scopeLabelStyle: React.CSSProperties = {
+  color: "#bcbcbc",
+  fontSize: "12px",
+};
+
+const scopeTextStyle: React.CSSProperties = {
+  marginTop: "20px",
+  color: "#bdbdbd",
+  fontSize: "13px",
+  lineHeight: 1.65,
 };
 
 const cardEyebrowStyle: React.CSSProperties = {
@@ -1079,18 +1696,11 @@ const cardEyebrowStyle: React.CSSProperties = {
   letterSpacing: "0.08em",
 };
 
-const principleHeadlineStyle: React.CSSProperties = {
+const cardTitleStyle: React.CSSProperties = {
+  margin: "8px 0 12px",
   fontSize: "21px",
   lineHeight: 1.25,
   letterSpacing: "-0.025em",
-  fontWeight: 850,
-  margin: "8px 0 12px",
-};
-
-const bodyLargeStyle: React.CSSProperties = {
-  color: "#444444",
-  fontSize: "16px",
-  lineHeight: 1.7,
 };
 
 const bodyTextStyle: React.CSSProperties = {
@@ -1099,79 +1709,83 @@ const bodyTextStyle: React.CSSProperties = {
   lineHeight: 1.65,
 };
 
-const flowGridStyle: React.CSSProperties = {
+const methodFlowStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "1fr auto 1fr auto 1fr auto 1fr",
+    "minmax(220px, 1fr) auto minmax(220px, 1fr) auto minmax(220px, 1fr)",
   gap: "12px",
   alignItems: "stretch",
+  overflowX: "auto",
 };
 
-const flowStepStyle: React.CSSProperties = {
+const methodCardStyle: React.CSSProperties = {
+  minWidth: "220px",
   background: "#ffffff",
   border: "1px solid #e2ded9",
-  borderRadius: "15px",
+  borderRadius: "16px",
   padding: "22px",
 };
 
-const flowNumberStyle: React.CSSProperties = {
+const methodCardEmphasisStyle: React.CSSProperties = {
+  borderTop: "5px solid #e21b23",
+};
+
+const methodNumberStyle: React.CSSProperties = {
   color: "#e21b23",
-  fontSize: "11px",
+  fontSize: "10px",
   fontWeight: 900,
+};
+
+const methodEyebrowStyle: React.CSSProperties = {
+  marginTop: "10px",
+  color: "#777777",
+  fontSize: "9px",
+  fontWeight: 850,
+  textTransform: "uppercase",
   letterSpacing: "0.08em",
 };
 
-const flowTitleStyle: React.CSSProperties = {
-  margin: "12px 0 7px",
-  fontSize: "16px",
-  letterSpacing: "-0.02em",
+const methodTitleStyle: React.CSSProperties = {
+  margin: "7px 0",
+  fontSize: "17px",
+  lineHeight: 1.35,
 };
 
-const flowTextStyle: React.CSSProperties = {
+const methodTextStyle: React.CSSProperties = {
   color: "#666666",
-  fontSize: "12px",
+  fontSize: "11px",
   lineHeight: 1.55,
   margin: 0,
 };
 
-const flowArrowStyle: React.CSSProperties = {
+const methodPlusStyle: React.CSSProperties = {
   alignSelf: "center",
-  color: "#aaa59f",
-  fontSize: "22px",
-};
-
-const scopePanelStyle: React.CSSProperties = {
-  background: "#171717",
-  color: "#ffffff",
-  borderRadius: "19px",
-  padding: "34px",
-  display: "grid",
-  gridTemplateColumns: "240px 1fr",
-  gap: "40px",
-  alignItems: "center",
-};
-
-const scopeNumberStyle: React.CSSProperties = {
-  fontSize: "64px",
-  lineHeight: 1,
+  fontSize: "24px",
   fontWeight: 900,
-  letterSpacing: "-0.05em",
+  color: "#aaa39d",
 };
 
-const scopeNumberLabelStyle: React.CSSProperties = {
-  color: "#bbbbbb",
-  marginTop: "7px",
+const methodArrowStyle: React.CSSProperties = {
+  alignSelf: "center",
+  fontSize: "24px",
+  color: "#aaa39d",
+};
+
+const methodPrincipleStyle: React.CSSProperties = {
+  marginTop: "16px",
+  padding: "18px",
+  borderLeft: "5px solid #e21b23",
+  background: "#f4f1ed",
+  borderRadius: "10px",
+  color: "#555555",
   fontSize: "12px",
-};
-
-const scopeTextWrapStyle: React.CSSProperties = {
-  maxWidth: "850px",
+  lineHeight: 1.6,
 };
 
 const criteriaGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(280px, 1fr))",
   gap: "15px",
 };
 
@@ -1184,7 +1798,6 @@ const criterionCardStyle: React.CSSProperties = {
 
 const criterionHeaderStyle: React.CSSProperties = {
   display: "flex",
-  justifyContent: "space-between",
 };
 
 const criterionCodeStyle: React.CSSProperties = {
@@ -1194,21 +1807,18 @@ const criterionCodeStyle: React.CSSProperties = {
   padding: "6px 8px",
   fontSize: "10px",
   fontWeight: 900,
-  letterSpacing: "0.05em",
 };
 
 const criterionTitleStyle: React.CSSProperties = {
   margin: "16px 0 7px",
   fontSize: "18px",
-  letterSpacing: "-0.025em",
 };
 
-const criterionPurposeStyle: React.CSSProperties = {
-  minHeight: "66px",
-  margin: 0,
-  color: "#666666",
-  fontSize: "12px",
-  lineHeight: 1.55,
+const criterionQuestionStyle: React.CSSProperties = {
+  color: "#444444",
+  fontSize: "13px",
+  fontWeight: 700,
+  lineHeight: 1.5,
 };
 
 const criterionDividerStyle: React.CSSProperties = {
@@ -1217,72 +1827,92 @@ const criterionDividerStyle: React.CSSProperties = {
   margin: "17px 0",
 };
 
-const criterionScoringLabelStyle: React.CSSProperties = {
-  color: "#777777",
+const criterionDetailStyle: React.CSSProperties = {
+  marginBottom: "13px",
+};
+
+const criterionDetailLabelStyle: React.CSSProperties = {
+  color: "#888888",
   fontSize: "9px",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
   fontWeight: 850,
+  textTransform: "uppercase",
+  letterSpacing: "0.07em",
 };
 
-const criterionListStyle: React.CSSProperties = {
-  margin: "9px 0 0",
-  paddingLeft: "17px",
-};
-
-const criterionListItemStyle: React.CSSProperties = {
-  color: "#555555",
+const criterionDetailValueStyle: React.CSSProperties = {
+  marginTop: "4px",
+  color: "#606060",
   fontSize: "11px",
   lineHeight: 1.55,
-  marginBottom: "5px",
 };
 
-const bandPanelStyle: React.CSSProperties = {
+const riskBandPanelStyle: React.CSSProperties = {
   marginTop: "18px",
   background: "#f1ede8",
   borderRadius: "16px",
   padding: "24px",
   display: "grid",
   gridTemplateColumns:
-    "minmax(250px, 0.8fr) minmax(0, 1.5fr)",
-  gap: "25px",
-  alignItems: "center",
+    "minmax(240px, 0.7fr) minmax(0, 1.4fr)",
+  gap: "24px",
 };
 
-const bandPanelIntroStyle: React.CSSProperties = {
-  maxWidth: "420px",
-};
-
-const bandPanelTitleStyle: React.CSSProperties = {
-  fontSize: "18px",
-  lineHeight: 1.4,
+const riskBandTitleStyle: React.CSSProperties = {
   margin: "7px 0 0",
+  fontSize: "19px",
 };
 
-const bandGridStyle: React.CSSProperties = {
+const riskBandGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(120px, 1fr))",
   gap: "10px",
 };
 
-const bandCardStyle: React.CSSProperties = {
-  background: "#ffffff",
+const riskBandCardStyle: React.CSSProperties = {
   borderRadius: "11px",
   padding: "16px",
 };
 
-const bandValueStyle: React.CSSProperties = {
-  fontSize: "24px",
+const riskBandValueStyle: React.CSSProperties = {
+  fontSize: "28px",
   fontWeight: 900,
-  letterSpacing: "-0.03em",
 };
 
-const bandLabelStyle: React.CSSProperties = {
-  marginTop: "4px",
-  color: "#666666",
-  fontSize: "11px",
+const riskBandLabelStyle: React.CSSProperties = {
+  fontSize: "10px",
   fontWeight: 750,
+  marginTop: "4px",
+};
+
+const thresholdNoticeStyle: React.CSSProperties = {
+  marginTop: "16px",
+  padding: "17px",
+  borderRadius: "12px",
+  background: "#eef3f7",
+  border: "1px solid #d5e0e8",
+  display: "flex",
+  gap: "12px",
+};
+
+const thresholdIconStyle: React.CSSProperties = {
+  width: "24px",
+  height: "24px",
+  borderRadius: "50%",
+  background: "#40566d",
+  color: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  fontWeight: 900,
+};
+
+const thresholdTextStyle: React.CSSProperties = {
+  marginTop: "4px",
+  color: "#566270",
+  fontSize: "11px",
+  lineHeight: 1.55,
 };
 
 const matrixCardStyle: React.CSSProperties = {
@@ -1298,9 +1928,9 @@ const matrixScrollStyle: React.CSSProperties = {
 
 const matrixTableStyle: React.CSSProperties = {
   width: "100%",
+  minWidth: "900px",
   borderCollapse: "separate",
   borderSpacing: "5px",
-  minWidth: "880px",
 };
 
 const matrixCornerStyle: React.CSSProperties = {
@@ -1321,7 +1951,7 @@ const matrixHeaderStyle: React.CSSProperties = {
   fontWeight: 850,
 };
 
-const matrixRowHeaderStyle: React.CSSProperties = {
+const matrixRiskHeaderStyle: React.CSSProperties = {
   background: "#f1eeea",
   borderRadius: "9px",
   padding: "16px",
@@ -1337,19 +1967,19 @@ const matrixCellStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
-const matrixBadgeBaseStyle: React.CSSProperties = {
+const matrixBadgeStyle: React.CSSProperties = {
   display: "inline-flex",
   borderRadius: "999px",
   padding: "7px 10px",
   fontSize: "10px",
-  lineHeight: 1.2,
   fontWeight: 850,
+  whiteSpace: "nowrap",
 };
 
 const priorityExplanationGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(280px, 1fr))",
   gap: "12px",
   marginTop: "15px",
 };
@@ -1361,6 +1991,17 @@ const priorityExplanationStyle: React.CSSProperties = {
   padding: "17px",
 };
 
+const priorityExplanationHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "15px",
+  alignItems: "center",
+};
+
+const priorityCountStyle: React.CSSProperties = {
+  fontSize: "20px",
+};
+
 const priorityExplanationTextStyle: React.CSSProperties = {
   margin: "11px 0 0",
   color: "#666666",
@@ -1368,142 +2009,181 @@ const priorityExplanationTextStyle: React.CSSProperties = {
   lineHeight: 1.55,
 };
 
-const planningFlowStyle: React.CSSProperties = {
+const planningAssuranceStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
-  gap: "13px",
+    "minmax(200px, 1fr) auto minmax(200px, 1fr) auto minmax(200px, 1fr)",
+  gap: "12px",
+  alignItems: "stretch",
+  overflowX: "auto",
 };
 
-const planningStepStyle: React.CSSProperties = {
+const planningMetricStyle: React.CSSProperties = {
+  minWidth: "200px",
   background: "#ffffff",
   border: "1px solid #e2ded9",
   borderRadius: "15px",
   padding: "21px",
 };
 
-const planningStepNumberStyle: React.CSSProperties = {
-  color: "#e21b23",
+const planningScoredStyle: React.CSSProperties = {
+  borderTop: "5px solid #e21b23",
+};
+
+const planningMetricNumberStyle: React.CSSProperties = {
+  fontSize: "38px",
+  fontWeight: 900,
+  letterSpacing: "-0.04em",
+};
+
+const planningMetricTitleStyle: React.CSSProperties = {
+  marginTop: "8px",
+  fontWeight: 850,
+  fontSize: "12px",
+};
+
+const planningMetricTextStyle: React.CSSProperties = {
+  marginTop: "6px",
+  color: "#666666",
   fontSize: "10px",
+  lineHeight: 1.5,
+};
+
+const planningOperatorStyle: React.CSSProperties = {
+  alignSelf: "center",
+  color: "#aaa39d",
+  fontSize: "23px",
+};
+
+const planningPlusStyle: React.CSSProperties = {
+  alignSelf: "center",
+  color: "#aaa39d",
+  fontSize: "23px",
   fontWeight: 900,
 };
 
-const planningStepTitleStyle: React.CSSProperties = {
-  margin: "10px 0 7px",
-  fontSize: "15px",
-};
-
-const planningStepTextStyle: React.CSSProperties = {
-  margin: 0,
-  color: "#666666",
-  fontSize: "11px",
-  lineHeight: 1.55,
-};
-
-const planningExampleStyle: React.CSSProperties = {
+const planningStatementStyle: React.CSSProperties = {
   marginTop: "16px",
+  padding: "17px",
   background: "#fff8dc",
   border: "1px solid #eadb99",
-  borderRadius: "15px",
-  padding: "24px",
-};
-
-const planningExampleHeaderStyle: React.CSSProperties = {
-  fontWeight: 850,
-  fontSize: "13px",
-  color: "#5f541f",
-};
-
-const planningExampleGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr auto 1fr",
-  gap: "22px",
-  alignItems: "center",
-  marginTop: "16px",
-};
-
-const planningExampleItemStyle: React.CSSProperties = {
-  background: "#ffffff",
-  borderRadius: "11px",
-  padding: "18px",
-};
-
-const planningExampleNumberStyle: React.CSSProperties = {
-  fontSize: "34px",
-  fontWeight: 900,
-};
-
-const planningExampleLabelStyle: React.CSSProperties = {
-  color: "#68604a",
-  fontSize: "11px",
-  marginTop: "4px",
-};
-
-const planningDividerStyle: React.CSSProperties = {
-  fontSize: "25px",
-  fontWeight: 900,
-  color: "#9a8735",
-};
-
-const planningCautionTextStyle: React.CSSProperties = {
-  margin: "16px 0 0",
+  borderRadius: "12px",
   color: "#5d541e",
   fontSize: "12px",
   lineHeight: 1.6,
 };
 
-const transparencyGridStyle: React.CSSProperties = {
+const sourceGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(250px, 1fr))",
   gap: "13px",
 };
 
-const transparencyCardStyle: React.CSSProperties = {
+const sourceCardStyle: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "14px",
+  padding: "19px",
+};
+
+const sourceTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: "15px",
+};
+
+const sourceTextStyle: React.CSSProperties = {
+  margin: "7px 0 0",
+  color: "#666666",
+  fontSize: "11px",
+  lineHeight: 1.55,
+};
+
+const assuranceGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "13px",
+};
+
+const assuranceCardStyle: React.CSSProperties = {
   background: "#ffffff",
   border: "1px solid #e2ded9",
   borderRadius: "15px",
   padding: "20px",
 };
 
-const transparencyIconStyle: React.CSSProperties = {
-  width: "28px",
-  height: "28px",
+const assuranceValueStyle: React.CSSProperties = {
+  fontSize: "31px",
+  fontWeight: 900,
+};
+
+const assuranceTitleStyle: React.CSSProperties = {
+  margin: "7px 0",
+  fontSize: "14px",
+};
+
+const assuranceTextStyle: React.CSSProperties = {
+  color: "#666666",
+  fontSize: "10px",
+  lineHeight: 1.5,
+};
+
+const assurancePrinciplesStyle: React.CSSProperties = {
+  marginTop: "15px",
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: "11px",
+};
+
+const assurancePrincipleStyle: React.CSSProperties = {
+  background: "#f1ede8",
+  borderRadius: "12px",
+  padding: "16px",
+  display: "flex",
+  gap: "10px",
+};
+
+const assuranceTickStyle: React.CSSProperties = {
+  width: "24px",
+  height: "24px",
   borderRadius: "50%",
   background: "#e7efea",
   color: "#365746",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  flexShrink: 0,
+  fontSize: "10px",
   fontWeight: 900,
-  fontSize: "12px",
 };
 
-const transparencyTitleStyle: React.CSSProperties = {
-  margin: "13px 0 7px",
-  fontSize: "15px",
-};
-
-const transparencyTextStyle: React.CSSProperties = {
-  margin: 0,
-  color: "#666666",
+const assurancePrincipleTitleStyle: React.CSSProperties = {
+  fontWeight: 850,
   fontSize: "11px",
-  lineHeight: 1.55,
 };
 
-const limitationsStyle: React.CSSProperties = {
+const assurancePrincipleTextStyle: React.CSSProperties = {
+  marginTop: "4px",
+  color: "#686868",
+  fontSize: "10px",
+  lineHeight: 1.5,
+};
+
+const interpretationStyle: React.CSSProperties = {
   background: "#171717",
   color: "#ffffff",
   borderRadius: "20px",
   padding: "34px",
   display: "grid",
   gridTemplateColumns:
-    "minmax(280px, 0.8fr) minmax(0, 1.3fr)",
+    "repeat(auto-fit, minmax(300px, 1fr))",
   gap: "40px",
   marginBottom: "50px",
 };
 
-const limitationsEyebrowStyle: React.CSSProperties = {
+const interpretationEyebrowStyle: React.CSSProperties = {
   color: "#ef5358",
   fontSize: "10px",
   fontWeight: 850,
@@ -1511,18 +2191,18 @@ const limitationsEyebrowStyle: React.CSSProperties = {
   letterSpacing: "0.08em",
 };
 
-const limitationsTitleStyle: React.CSSProperties = {
+const interpretationTitleStyle: React.CSSProperties = {
   margin: "7px 0 0",
   fontSize: "28px",
   lineHeight: 1.15,
   letterSpacing: "-0.035em",
 };
 
-const limitationsTextWrapStyle: React.CSSProperties = {
+const interpretationTextWrapStyle: React.CSSProperties = {
   alignSelf: "center",
 };
 
-const limitationsTextStyle: React.CSSProperties = {
+const interpretationTextStyle: React.CSSProperties = {
   color: "#bdbdbd",
   fontSize: "12px",
   lineHeight: 1.65,
@@ -1534,6 +2214,7 @@ const ctaStyle: React.CSSProperties = {
   borderRadius: "20px",
   padding: "34px",
   display: "flex",
+  flexWrap: "wrap",
   justifyContent: "space-between",
   alignItems: "center",
   gap: "35px",
