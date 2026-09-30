@@ -115,11 +115,6 @@ export default function PriorityPage() {
         const normalised =
           normaliseOverview(raw);
 
-        /*
-          Do not silently render an
-          empty dashboard if the API
-          shape changes.
-        */
         if (
           normalised.assessedSites <=
           0
@@ -175,10 +170,9 @@ export default function PriorityPage() {
                 loadingTextStyle
               }
             >
-              Retrieving the
-              current assessment
-              from the Early
-              Warning System.
+              Retrieving the current
+              assessment from the
+              Early Warning System.
             </div>
           </div>
         </main>
@@ -250,21 +244,18 @@ export default function PriorityPage() {
 
           <h1 style={heroTitleStyle}>
             Understand what each
-            assessment outcome
-            means.
+            assessment outcome means.
           </h1>
 
           <p style={heroTextStyle}>
-            Every site in the
-            current assessment is
-            considered on two
-            dimensions: Risk
+            Every site is assessed
+            on two dimensions: Risk
             Exposure and Strategic
             Value. Their combination
-            determines whether a
-            site appears as a
-            current priority, review
-            case or monitoring site.
+            determines whether a site
+            is placed in an active
+            priority, review or
+            monitoring category.
           </p>
 
           <div style={heroMetaStyle}>
@@ -299,13 +290,13 @@ export default function PriorityPage() {
           </div>
         </section>
 
-        {/* CURRENT POSITION */}
+        {/* CURRENT DISTRIBUTION */}
 
         <section style={sectionStyle}>
           <SectionHeading
             eyebrow="Current position"
-            title="Six assessment outcomes"
-            description="The categories distinguish sites requiring active attention from sites that should remain under review or strategic monitoring."
+            title="Current distribution of outcomes"
+            description="The current assessment separates active priorities from sites that remain under risk review or strategic monitoring."
           />
 
           <div style={summaryGridStyle}>
@@ -558,10 +549,9 @@ export default function PriorityPage() {
             early-warning and
             prioritisation signal.
             It is not a prediction
-            that a site will be
-            lost or closed, and it
-            is not a planning
-            judgement.
+            that a site will be lost
+            or closed, and it is not
+            a planning judgement.
           </div>
         </section>
 
@@ -600,12 +590,11 @@ export default function PriorityPage() {
               be identified and
               retained for review
               without increasing a
-              site&apos;s Risk
-              score. Only evidence
-              that meets the
-              governed RF6 logic
-              contributes directly
-              to the assessment.
+              site&apos;s Risk score.
+              Only evidence that meets
+              the governed RF6 logic
+              contributes directly to
+              the assessment.
             </p>
           </div>
 
@@ -715,13 +704,12 @@ export default function PriorityPage() {
             <p
               style={ctaTextStyle}
             >
-              Search the full
-              assessed population
-              by priority, borough
-              or risk and open
-              individual site
-              records for the
-              supporting evidence.
+              Search the full assessed
+              population by priority,
+              borough or risk and open
+              individual site records
+              for the supporting
+              evidence.
             </p>
           </div>
 
@@ -744,17 +732,6 @@ export default function PriorityPage() {
 function normaliseOverview(
   raw: any
 ): OverviewData {
-  /*
-    Allow:
-      { assessedSites: ... }
-
-    or:
-      { overview: { assessedSites: ... } }
-
-    or:
-      { data: { assessedSites: ... } }
-  */
-
   const source =
     raw?.overview ??
     raw?.data ??
@@ -1344,7 +1321,7 @@ const pageStyle: CSSProperties = {
   maxWidth: "1440px",
   margin: "0 auto",
   padding:
-    "38px 28px 90px",
+    "34px 28px 78px",
 };
 
 const loadingCardStyle: CSSProperties = {
@@ -1381,8 +1358,8 @@ const heroStyle: CSSProperties = {
   background: "#171717",
   color: "#ffffff",
   borderRadius: "24px",
-  padding: "52px",
-  marginBottom: "52px",
+  padding: "44px 52px",
+  marginBottom: "44px",
 };
 
 const heroEyebrowStyle: CSSProperties = {
@@ -1395,9 +1372,9 @@ const heroEyebrowStyle: CSSProperties = {
 
 const heroTitleStyle: CSSProperties = {
   maxWidth: "980px",
-  margin: "12px 0 18px",
+  margin: "12px 0 16px",
   fontSize:
-    "clamp(42px, 5.5vw, 68px)",
+    "clamp(42px, 5.5vw, 66px)",
   lineHeight: 1,
   letterSpacing: "-0.05em",
   fontWeight: 900,
@@ -1408,7 +1385,7 @@ const heroTextStyle: CSSProperties = {
   margin: 0,
   color: "#c4c4c4",
   fontSize: "16px",
-  lineHeight: 1.65,
+  lineHeight: 1.6,
 };
 
 const heroMetaStyle: CSSProperties = {
@@ -1416,7 +1393,7 @@ const heroMetaStyle: CSSProperties = {
   flexWrap: "wrap",
   gap: "9px",
   alignItems: "center",
-  marginTop: "26px",
+  marginTop: "24px",
   fontSize: "12px",
   fontWeight: 800,
 };
@@ -1426,7 +1403,7 @@ const metaDotStyle: CSSProperties = {
 };
 
 const sectionStyle: CSSProperties = {
-  marginBottom: "54px",
+  marginBottom: "46px",
 };
 
 const sectionHeadingStyle: CSSProperties = {
@@ -1435,7 +1412,7 @@ const sectionHeadingStyle: CSSProperties = {
     "repeat(auto-fit, minmax(300px, 1fr))",
   gap: "30px",
   alignItems: "end",
-  marginBottom: "22px",
+  marginBottom: "20px",
 };
 
 const eyebrowStyle: CSSProperties = {
@@ -1457,7 +1434,7 @@ const sectionDescriptionStyle: CSSProperties = {
   margin: 0,
   color: "#666666",
   fontSize: "13px",
-  lineHeight: 1.65,
+  lineHeight: 1.6,
 };
 
 const summaryGridStyle: CSSProperties = {
@@ -1472,11 +1449,11 @@ const summaryCardStyle: CSSProperties = {
   border:
     "1px solid #e2ded9",
   borderRadius: "16px",
-  padding: "22px",
+  padding: "20px",
 };
 
 const summaryValueStyle: CSSProperties = {
-  fontSize: "39px",
+  fontSize: "37px",
   fontWeight: 900,
   letterSpacing: "-0.045em",
 };
@@ -1516,7 +1493,7 @@ const priorityAccentStyle: CSSProperties = {
 };
 
 const priorityCardBodyStyle: CSSProperties = {
-  padding: "22px",
+  padding: "20px",
 };
 
 const priorityCardHeaderStyle: CSSProperties = {
@@ -1535,7 +1512,7 @@ const priorityNameStyle: CSSProperties = {
 
 const priorityCountStyle: CSSProperties = {
   marginTop: "2px",
-  fontSize: "37px",
+  fontSize: "35px",
   fontWeight: 900,
   letterSpacing: "-0.04em",
 };
@@ -1547,7 +1524,7 @@ const categoryDotStyle: CSSProperties = {
 };
 
 const prioritySummaryStyle: CSSProperties = {
-  marginTop: "17px",
+  marginTop: "15px",
   color: "#222222",
   fontSize: "12px",
   fontWeight: 850,
@@ -1555,7 +1532,7 @@ const prioritySummaryStyle: CSSProperties = {
 };
 
 const priorityInterpretationStyle: CSSProperties = {
-  margin: "8px 0 18px",
+  margin: "8px 0 16px",
   color: "#666666",
   fontSize: "10px",
   lineHeight: 1.55,
@@ -1570,8 +1547,8 @@ const priorityLinkStyle: CSSProperties = {
 };
 
 const matrixSectionStyle: CSSProperties = {
-  marginBottom: "54px",
-  padding: "30px",
+  marginBottom: "46px",
+  padding: "28px",
   background: "#ffffff",
   border:
     "1px solid #e2ded9",
@@ -1627,8 +1604,8 @@ const matrixCellStyle: CSSProperties = {
 };
 
 const matrixNoteStyle: CSSProperties = {
-  marginTop: "17px",
-  padding: "14px 16px",
+  marginTop: "16px",
+  padding: "13px 15px",
   borderRadius: "10px",
   background: "#f4f1ed",
   color: "#555555",
@@ -1640,10 +1617,10 @@ const planningSectionStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
     "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: "30px",
+  gap: "28px",
   alignItems: "center",
-  marginBottom: "54px",
-  padding: "32px",
+  marginBottom: "46px",
+  padding: "28px",
   background: "#fff7db",
   border:
     "1px solid #e7d89d",
@@ -1660,7 +1637,7 @@ const planningEyebrowStyle: CSSProperties = {
 
 const planningTitleStyle: CSSProperties = {
   margin: "7px 0 10px",
-  fontSize: "26px",
+  fontSize: "25px",
   lineHeight: 1.15,
   letterSpacing: "-0.03em",
 };
@@ -1681,13 +1658,13 @@ const planningMetricsStyle: CSSProperties = {
 };
 
 const planningMetricStyle: CSSProperties = {
-  padding: "18px",
+  padding: "17px",
   background: "#ffffff",
   borderRadius: "12px",
 };
 
 const planningMetricValueStyle: CSSProperties = {
-  fontSize: "34px",
+  fontSize: "32px",
   fontWeight: 900,
   letterSpacing: "-0.04em",
 };
@@ -1704,12 +1681,12 @@ const interpretationStyle: CSSProperties = {
   background: "#171717",
   color: "#ffffff",
   borderRadius: "20px",
-  padding: "32px",
-  marginBottom: "48px",
+  padding: "28px",
+  marginBottom: "42px",
   display: "grid",
   gridTemplateColumns:
     "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: "35px",
+  gap: "30px",
 };
 
 const interpretationEyebrowStyle: CSSProperties = {
@@ -1723,7 +1700,7 @@ const interpretationEyebrowStyle: CSSProperties = {
 const interpretationTitleStyle: CSSProperties = {
   margin: "7px 0 0",
   maxWidth: "520px",
-  fontSize: "25px",
+  fontSize: "24px",
   lineHeight: 1.2,
   letterSpacing: "-0.03em",
 };
@@ -1736,7 +1713,7 @@ const interpretationGridStyle: CSSProperties = {
 };
 
 const interpretationItemStyle: CSSProperties = {
-  padding: "14px",
+  padding: "13px",
   borderRadius: "10px",
   background: "#242424",
 };
@@ -1757,12 +1734,12 @@ const ctaStyle: CSSProperties = {
   background: "#e21b23",
   color: "#ffffff",
   borderRadius: "20px",
-  padding: "32px",
+  padding: "28px",
   display: "flex",
   flexWrap: "wrap",
   justifyContent:
     "space-between",
-  gap: "30px",
+  gap: "28px",
   alignItems: "center",
 };
 
@@ -1776,7 +1753,7 @@ const ctaEyebrowStyle: CSSProperties = {
 
 const ctaTitleStyle: CSSProperties = {
   margin: "6px 0 8px",
-  fontSize: "28px",
+  fontSize: "27px",
   letterSpacing: "-0.035em",
 };
 
