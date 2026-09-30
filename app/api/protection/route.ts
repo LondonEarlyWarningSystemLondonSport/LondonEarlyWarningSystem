@@ -2,10 +2,6 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-/* =========================================================
-   TYPES
-   ========================================================= */
-
 type FabricProtectionRow = {
   reconciliation_id?: number | string | null;
 
@@ -119,8 +115,110 @@ type ProtectionRecord = {
   reconciliationStatus: string | null;
 
   runDate: string | null;
-   HELPERS
-   ========================================================= */
+};
+
+async function getFabricAccessToken() {
+  const tenantId = process.env.AZURE_TENANT_ID;
+  const clientId = process.env.AZURE_CLIENT_ID;
+  const clientSecret = process.env.AZURE_CLIENT_SECRET;
+
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error(
+      "Azure service principal environment variables are missing."
+    );
+  }
+
+  const tokenUrl =
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+
+  const body = new URLSearchParams();
+
+  body.set("grant_type", "client_credentials");
+  body.set("client_id", clientId);
+  body.set("client_secret", clientSecret);
+  body.set(
+    "scope",
+    "https://api.fabric.microsoft.com/.default"
+  );
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type":
+        "application/x-www-form-urlencoded",
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error_description ||
+        data?.error ||
+        "Unable to obtain Fabric access token."
+    );
+  }
+
+  return data.access_token as string;
+}
+
+async function runGraphQL(query: string) {
+  const endpoint =
+    process.env.FABRIC_GRAPHQL_ENDPOINT;
+
+  if (!endpoint) {
+    throw new Error(
+      "FABRIC_GRAPHQL_ENDPOINT is missing."
+    );
+  }
+
+  const token =
+    await getFabricAccessToken();
+
+  const response = await fetch(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          `Bearer ${token}`,
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify({
+        query,
+      }),
+      cache: "no-store",
+    }
+  );
+
+  const data =
+    await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      `Fabric GraphQL request failed: ${response.status}`
+    );
+  }
+
+  if (data.errors?.length) {
+    throw new Error(
+      data.errors
+        .map(
+          (error: {
+            message?: string;
+          }) =>
+            error.message ||
+            "Unknown GraphQL error"
+        )
+        .join("; ")
+    );
+  }
+
+  return data.data;
+}
 
 function getItems(
   root: unknown
@@ -138,12 +236,11 @@ function getItems(
     root !== null &&
     "items" in root
   ) {
-    const items =
-      (
-        root as {
-          items?: FabricProtectionRow[];
-        }
-      ).items;
+    const items = (
+      root as {
+        items?: FabricProtectionRow[];
+      }
+    ).items;
 
     return Array.isArray(items)
       ? items
@@ -211,14 +308,12 @@ function isYes(
     | undefined
 ) {
   return (
-    value?.trim().toLowerCase() ===
+    value
+      ?.trim()
+      .toLowerCase() ===
     "yes"
   );
 }
-
-/* =========================================================
-   CLASSIFICATION
-   ========================================================= */
 
 function classifyRecord(
   row: FabricProtectionRow
@@ -234,21 +329,19 @@ function classifyRecord(
     return {
       category:
         "current-assessment",
-
       categoryLabel:
         "Current assessed at-risk site",
     };
   }
 
-  const combined =
-    [
-      row.action_category,
-      row.reconciliation_status,
-      row.outside_scope_reason,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+  const combined = [
+    row.action_category,
+    row.reconciliation_status,
+    row.outside_scope_reason,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
   if (
     combined.includes("closed") ||
@@ -258,7 +351,6 @@ function classifyRecord(
     return {
       category:
         "protection-watchlist",
-
       categoryLabel:
         "Protection watchlist",
     };
@@ -278,7 +370,6 @@ function classifyRecord(
     return {
       category:
         "outside-playing-field-scope",
-
       categoryLabel:
         "Outside current playing-field scope",
     };
@@ -287,15 +378,10 @@ function classifyRecord(
   return {
     category:
       "manual-reconciliation",
-
     categoryLabel:
       "Manual reconciliation",
   };
 }
-
-/* =========================================================
-   NORMALISATION
-   ========================================================= */
 
 function normaliseRecord(
   row: FabricProtectionRow,
@@ -496,10 +582,6 @@ function normaliseRecord(
   };
 }
 
-/* =========================================================
-   ROUTE
-   ========================================================= */
-
 export async function GET() {
   try {
     const query = `
@@ -507,59 +589,40 @@ export async function GET() {
         protection: app_pps_reconciliations(first: 100) {
           items {
             reconciliation_id
-
             pps_source_site_name
             pps_borough
-
             pps_site_id
             active_places_site_id
-
             pps_playing_field_flag
             pps_at_risk_flag
-
             pps_ownership_type
             pps_management_type
-
             pps_security_of_tenure
             pps_community_use_flag
-
             matched_to_ranked_site
-
             current_site_id
             current_site_name
             current_site_postcode
             current_site_borough
-
             priority_category
             risk_band
-
             strategic_value_score
             strategic_value_band
             risk_exposure_score
-
             rf3_pps_at_risk_score
             rf6_planning_pressure_score
             rf6_scoring_status
-
             planning_review_required
             planning_candidate_application_count
-
             current_playing_field_status
-
             match_method
-
             reconciliation_status
             reconciliation_note
-
             outside_scope_reason
             action_category
-
             source_sheet_name
             run_date
           }
-
-          hasNextPage
-          endCursor
         }
       }
     `;
@@ -576,30 +639,23 @@ export async function GET() {
 
     const records =
       rawRows
-        .map(
-          normaliseRecord
-        )
-        .sort(
-          (
-            a,
-            b
-          ) => {
-            const boroughSort =
-              a.borough.localeCompare(
-                b.borough
-              );
-
-            if (
-              boroughSort !== 0
-            ) {
-              return boroughSort;
-            }
-
-            return a.siteName.localeCompare(
-              b.siteName
+        .map(normaliseRecord)
+        .sort((a, b) => {
+          const boroughSort =
+            a.borough.localeCompare(
+              b.borough
             );
+
+          if (
+            boroughSort !== 0
+          ) {
+            return boroughSort;
           }
-        );
+
+          return a.siteName.localeCompare(
+            b.siteName
+          );
+        });
 
     const counts = {
       total:
