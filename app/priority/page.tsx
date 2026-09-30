@@ -13,38 +13,40 @@ import Link from "next/link";
 
 import AppShell from "../../components/AppShell";
 
+/* =========================================================
+   TYPES
+   ========================================================= */
+
 type OverviewData = {
-  assessedSites?: number;
-  boroughCount?: number;
+  assessedSites: number;
+  boroughCount: number;
 
-  priorities?: {
-    priorityA?: number;
-    priorityB?: number;
-    priorityC?: number;
-    strategicMonitor?: number;
-    riskReview?: number;
-    monitor?: number;
+  priorities: {
+    priorityA: number;
+    priorityB: number;
+    priorityC: number;
+    strategicMonitor: number;
+    riskReview: number;
+    monitor: number;
   };
 
-  risk?: {
-    high?: number;
-    medium?: number;
-    noCurrentRisk?: number;
+  risk: {
+    high: number;
+    medium: number;
+    noCurrentRisk: number;
   };
 
-  planning?: {
-    confirmedRf6Sites?: number;
-    planningReviewEvidenceSites?: number;
+  planning: {
+    confirmedRf6Sites: number;
+    planningReviewEvidenceSites: number;
   };
 
-  evidence?: {
-    ppsLinkedSites?: number;
-    knownAtRiskSites?: number;
-    reviewRequiredSites?: number;
-    imdDecile1To3Sites?: number;
+  evidence: {
+    ppsLinkedSites: number;
+    knownAtRiskSites: number;
+    reviewRequiredSites: number;
+    imdDecile1To3Sites: number;
   };
-
-  error?: string;
 };
 
 type PriorityCardProps = {
@@ -53,12 +55,17 @@ type PriorityCardProps = {
   summary: string;
   interpretation: string;
   href: string;
+
   emphasis?:
     | "highest"
     | "priority"
     | "review"
     | "monitor";
 };
+
+/* =========================================================
+   PAGE
+   ========================================================= */
 
 export default function PriorityPage() {
   const [overview, setOverview] =
@@ -75,6 +82,8 @@ export default function PriorityPage() {
     );
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadOverview() {
       try {
         setLoading(true);
@@ -84,43 +93,93 @@ export default function PriorityPage() {
           await fetch(
             "/api/overview",
             {
+              method: "GET",
               cache: "no-store",
+              headers: {
+                Accept:
+                  "application/json",
+              },
             }
           );
 
-        const result:
-          OverviewData =
+        const raw =
           await response.json();
 
         if (!response.ok) {
           throw new Error(
-            result?.error ||
-              "Unable to load overview information."
+            raw?.error ||
+              `Overview API returned ${response.status}`
           );
         }
 
-        setOverview(result);
+        const normalised =
+          normaliseOverview(raw);
+
+        /*
+          Do not silently render an
+          empty dashboard if the API
+          shape changes.
+        */
+        if (
+          normalised.assessedSites <=
+          0
+        ) {
+          throw new Error(
+            "The overview API responded, but the assessed-site total could not be read."
+          );
+        }
+
+        if (!cancelled) {
+          setOverview(
+            normalised
+          );
+        }
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load overview information."
-        );
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load priority information."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     loadOverview();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
     return (
       <AppShell>
         <main style={pageStyle}>
-          <div style={loadingStyle}>
-            Loading priority and
-            monitoring information...
+          <div style={loadingCardStyle}>
+            <div
+              style={
+                loadingTitleStyle
+              }
+            >
+              Loading Priority &
+              Monitoring
+            </div>
+
+            <div
+              style={
+                loadingTextStyle
+              }
+            >
+              Retrieving the
+              current assessment
+              from the Early
+              Warning System.
+            </div>
           </div>
         </main>
       </AppShell>
@@ -142,7 +201,8 @@ export default function PriorityPage() {
 
             <div
               style={{
-                marginTop: "6px",
+                marginTop: "8px",
+                lineHeight: 1.6,
               }}
             >
               {error ||
@@ -154,51 +214,29 @@ export default function PriorityPage() {
     );
   }
 
-  const priorityA =
-    overview.priorities
-      ?.priorityA ?? 0;
-
-  const priorityB =
-    overview.priorities
-      ?.priorityB ?? 0;
-
-  const priorityC =
-    overview.priorities
-      ?.priorityC ?? 0;
-
-  const strategicMonitor =
-    overview.priorities
-      ?.strategicMonitor ?? 0;
-
-  const riskReview =
-    overview.priorities
-      ?.riskReview ?? 0;
-
-  const monitor =
-    overview.priorities
-      ?.monitor ?? 0;
-
-  const assessedSites =
-    overview.assessedSites ?? 0;
-
-  const planningReviewEvidenceSites =
-    overview.planning
-      ?.planningReviewEvidenceSites ??
-    0;
-
-  const confirmedRf6Sites =
-    overview.planning
-      ?.confirmedRf6Sites ?? 0;
+  const {
+    assessedSites,
+    priorities,
+    planning,
+  } = overview;
 
   const activePriorityTotal =
-    priorityA +
-    priorityB +
-    priorityC;
+    priorities.priorityA +
+    priorities.priorityB +
+    priorities.priorityC;
 
   const monitoringTotal =
-    strategicMonitor +
-    riskReview +
-    monitor;
+    priorities.strategicMonitor +
+    priorities.riskReview +
+    priorities.monitor;
+
+  const planningReviewOnly =
+    Math.max(
+      planning
+        .planningReviewEvidenceSites -
+        planning.confirmedRf6Sites,
+      0
+    );
 
   return (
     <AppShell>
@@ -207,25 +245,26 @@ export default function PriorityPage() {
 
         <section style={heroStyle}>
           <div style={heroEyebrowStyle}>
-            Priority & monitoring
+            Priority & Monitoring
           </div>
 
           <h1 style={heroTitleStyle}>
             Understand what each
-            assessment outcome means.
+            assessment outcome
+            means.
           </h1>
 
           <p style={heroTextStyle}>
             Every site in the
             current assessment is
             considered on two
-            dimensions: Risk Exposure
-            and Strategic Value.
-            Their combination
-            determines whether a site
-            appears as a current
-            priority, review case or
-            monitoring site.
+            dimensions: Risk
+            Exposure and Strategic
+            Value. Their combination
+            determines whether a
+            site appears as a
+            current priority, review
+            case or monitoring site.
           </p>
 
           <div style={heroMetaStyle}>
@@ -263,28 +302,11 @@ export default function PriorityPage() {
         {/* CURRENT POSITION */}
 
         <section style={sectionStyle}>
-          <div style={sectionHeadingStyle}>
-            <div>
-              <div style={eyebrowStyle}>
-                Current position
-              </div>
-
-              <h2 style={sectionTitleStyle}>
-                Six assessment
-                outcomes
-              </h2>
-            </div>
-
-            <p style={sectionDescriptionStyle}>
-              The categories
-              distinguish sites
-              requiring active
-              attention from sites
-              that should remain
-              under review or
-              strategic monitoring.
-            </p>
-          </div>
+          <SectionHeading
+            eyebrow="Current position"
+            title="Six assessment outcomes"
+            description="The categories distinguish sites requiring active attention from sites that should remain under review or strategic monitoring."
+          />
 
           <div style={summaryGridStyle}>
             <SummaryMetric
@@ -297,7 +319,7 @@ export default function PriorityPage() {
 
             <SummaryMetric
               value={
-                riskReview
+                priorities.riskReview
               }
               title="Risk Review"
               text="Sites where current risk evidence warrants review but Strategic Value is lower."
@@ -305,7 +327,8 @@ export default function PriorityPage() {
 
             <SummaryMetric
               value={
-                strategicMonitor
+                priorities
+                  .strategicMonitor
               }
               title="Strategic Monitor"
               text="Highly strategic sites with low or no current risk signal."
@@ -313,7 +336,7 @@ export default function PriorityPage() {
 
             <SummaryMetric
               value={
-                monitor
+                priorities.monitor
               }
               title="Monitor"
               text="Sites retained within the system without a current escalation outcome."
@@ -324,30 +347,18 @@ export default function PriorityPage() {
         {/* ACTIVE PRIORITIES */}
 
         <section style={sectionStyle}>
-          <div style={sectionHeadingStyle}>
-            <div>
-              <div style={eyebrowStyle}>
-                Active priorities
-              </div>
-
-              <h2 style={sectionTitleStyle}>
-                Priority A, B and C
-              </h2>
-            </div>
-
-            <p style={sectionDescriptionStyle}>
-              These categories
-              represent sites
-              currently escalated by
-              the risk-led
-              assessment.
-            </p>
-          </div>
+          <SectionHeading
+            eyebrow="Active priorities"
+            title="Priority A, B and C"
+            description="These categories represent sites currently escalated by the risk-led assessment."
+          />
 
           <div style={priorityGridStyle}>
             <PriorityCard
               name="Priority A"
-              count={priorityA}
+              count={
+                priorities.priorityA
+              }
               summary="High Risk with High or Medium Strategic Value."
               interpretation="These sites combine the strongest current risk signal with higher strategic importance."
               href="/sites?priority=Priority%20A"
@@ -356,7 +367,9 @@ export default function PriorityPage() {
 
             <PriorityCard
               name="Priority B"
-              count={priorityB}
+              count={
+                priorities.priorityB
+              }
               summary="High Risk with Low or Not Flagged Strategic Value."
               interpretation="Risk remains the reason for escalation even where the current Strategic Value score is lower."
               href="/sites?priority=Priority%20B"
@@ -365,7 +378,9 @@ export default function PriorityPage() {
 
             <PriorityCard
               name="Priority C"
-              count={priorityC}
+              count={
+                priorities.priorityC
+              }
               summary="Medium Risk with High or Medium Strategic Value."
               interpretation="These sites combine material risk exposure with stronger strategic importance."
               href="/sites?priority=Priority%20C"
@@ -374,44 +389,33 @@ export default function PriorityPage() {
           </div>
         </section>
 
-        {/* REVIEW AND MONITORING */}
+        {/* REVIEW & MONITORING */}
 
         <section style={sectionStyle}>
-          <div style={sectionHeadingStyle}>
-            <div>
-              <div style={eyebrowStyle}>
-                Review & monitoring
-              </div>
-
-              <h2 style={sectionTitleStyle}>
-                Sites that remain
-                visible without an
-                A–C priority
-              </h2>
-            </div>
-
-            <p style={sectionDescriptionStyle}>
-              A site does not need
-              to be Priority A, B or
-              C to remain important
-              to the Early Warning
-              System.
-            </p>
-          </div>
+          <SectionHeading
+            eyebrow="Review & monitoring"
+            title="Sites that remain visible without an A–C priority"
+            description="A site does not need to be Priority A, B or C to remain important to the Early Warning System."
+          />
 
           <div style={priorityGridStyle}>
             <PriorityCard
               name="Risk Review"
-              count={riskReview}
+              count={
+                priorities.riskReview
+              }
               summary="Medium Risk with Low or Not Flagged Strategic Value."
-              interpretation="These sites retain a meaningful risk signal and remain visible for review."
+              interpretation="These sites retain a meaningful risk signal and remain visible for review rather than being treated as routine monitoring."
               href="/sites?priority=Risk%20Review"
               emphasis="review"
             />
 
             <PriorityCard
               name="Strategic Monitor"
-              count={strategicMonitor}
+              count={
+                priorities
+                  .strategicMonitor
+              }
               summary="High Strategic Value with Low or No Current Risk Signal."
               interpretation="These sites are strategically significant and remain visible even though the current assessment does not indicate higher risk."
               href="/sites?priority=Strategic%20Monitor"
@@ -420,7 +424,9 @@ export default function PriorityPage() {
 
             <PriorityCard
               name="Monitor"
-              count={monitor}
+              count={
+                priorities.monitor
+              }
               summary="Other sites with Low or No Current Risk Signal."
               interpretation="Monitor does not mean unimportant. It means the current evidence does not require escalation through the risk-led priority framework."
               href="/sites?priority=Monitor"
@@ -429,56 +435,70 @@ export default function PriorityPage() {
           </div>
         </section>
 
-        {/* MATRIX */}
+        {/* PRIORITY MATRIX */}
 
-        <section style={matrixSectionStyle}>
-          <div style={sectionHeadingStyle}>
-            <div>
-              <div style={eyebrowStyle}>
-                How outcomes are
-                assigned
-              </div>
+        <section
+          style={
+            matrixSectionStyle
+          }
+        >
+          <SectionHeading
+            eyebrow="How outcomes are assigned"
+            title="Risk-led priority matrix"
+            description="Risk is shown first because it determines the escalation pathway. Strategic Value then determines which priority or monitoring outcome applies."
+          />
 
-              <h2 style={sectionTitleStyle}>
-                Risk-led priority
-                matrix
-              </h2>
-            </div>
-
-            <p style={sectionDescriptionStyle}>
-              Risk is shown first
-              because it determines
-              the escalation pathway.
-              Strategic Value then
-              determines which
-              priority or monitoring
-              outcome applies.
-            </p>
-          </div>
-
-          <div style={matrixScrollStyle}>
-            <table style={matrixTableStyle}>
+          <div
+            style={
+              matrixScrollStyle
+            }
+          >
+            <table
+              style={
+                matrixTableStyle
+              }
+            >
               <thead>
                 <tr>
-                  <th style={matrixCornerStyle}>
+                  <th
+                    style={
+                      matrixCornerStyle
+                    }
+                  >
                     Risk ↓
                     <br />
                     Strategic Value →
                   </th>
 
-                  <th style={matrixHeaderStyle}>
+                  <th
+                    style={
+                      matrixHeaderStyle
+                    }
+                  >
                     High
                   </th>
 
-                  <th style={matrixHeaderStyle}>
+                  <th
+                    style={
+                      matrixHeaderStyle
+                    }
+                  >
                     Medium
                   </th>
 
-                  <th style={matrixHeaderStyle}>
+                  <th
+                    style={
+                      matrixHeaderStyle
+                    }
+                  >
                     Low
                   </th>
 
-                  <th style={matrixHeaderStyle}>
+                  <th
+                    style={
+                      matrixHeaderStyle
+                    }
+                  >
                     Not flagged
                   </th>
                 </tr>
@@ -528,7 +548,9 @@ export default function PriorityPage() {
             </table>
           </div>
 
-          <div style={matrixNoteStyle}>
+          <div
+            style={matrixNoteStyle}
+          >
             <strong>
               Important:
             </strong>{" "}
@@ -536,101 +558,132 @@ export default function PriorityPage() {
             early-warning and
             prioritisation signal.
             It is not a prediction
-            that a site will be lost
-            or closed, and it is not
-            a planning judgement.
+            that a site will be
+            lost or closed, and it
+            is not a planning
+            judgement.
           </div>
         </section>
 
         {/* PLANNING */}
 
-        <section style={planningSectionStyle}>
+        <section
+          style={
+            planningSectionStyle
+          }
+        >
           <div>
-            <div style={planningEyebrowStyle}>
+            <div
+              style={
+                planningEyebrowStyle
+              }
+            >
               Planning evidence
             </div>
 
-            <h2 style={planningTitleStyle}>
+            <h2
+              style={
+                planningTitleStyle
+              }
+            >
               Planning evidence is
-              handled separately from
-              the priority label.
+              not automatically a
+              planning-risk signal.
             </h2>
 
-            <p style={planningTextStyle}>
-              Planning records can
+            <p
+              style={
+                planningTextStyle
+              }
+            >
+              Planning records may
               be identified and
               retained for review
-              without automatically
-              increasing a site’s
-              Risk score. Only
-              evidence meeting the
-              current RF6 scoring
-              logic contributes
-              directly to the
-              assessment.
+              without increasing a
+              site&apos;s Risk
+              score. Only evidence
+              that meets the
+              governed RF6 logic
+              contributes directly
+              to the assessment.
             </p>
           </div>
 
-          <div style={planningMetricsStyle}>
-            <div style={planningMetricStyle}>
-              <div style={planningMetricValueStyle}>
-                {formatNumber(
-                  planningReviewEvidenceSites
-                )}
-              </div>
+          <div
+            style={
+              planningMetricsStyle
+            }
+          >
+            <PlanningMetric
+              value={
+                planning
+                  .planningReviewEvidenceSites
+              }
+              label="sites with planning evidence identified"
+            />
 
-              <div style={planningMetricLabelStyle}>
-                sites with planning
-                evidence identified
-              </div>
-            </div>
+            <PlanningMetric
+              value={
+                planningReviewOnly
+              }
+              label="retained for review only"
+            />
 
-            <div style={planningMetricStyle}>
-              <div style={planningMetricValueStyle}>
-                {formatNumber(
-                  confirmedRf6Sites
-                )}
-              </div>
-
-              <div style={planningMetricLabelStyle}>
-                sites where planning
-                evidence contributes
-                to RF6
-              </div>
-            </div>
+            <PlanningMetric
+              value={
+                planning
+                  .confirmedRf6Sites
+              }
+              label="sites where planning evidence contributes to RF6"
+            />
           </div>
         </section>
 
         {/* INTERPRETATION */}
 
-        <section style={interpretationStyle}>
+        <section
+          style={
+            interpretationStyle
+          }
+        >
           <div>
-            <div style={interpretationEyebrowStyle}>
+            <div
+              style={
+                interpretationEyebrowStyle
+              }
+            >
               Interpretation
             </div>
 
-            <h2 style={interpretationTitleStyle}>
-              The categories indicate
-              different kinds of
-              attention, not a simple
-              league table.
+            <h2
+              style={
+                interpretationTitleStyle
+              }
+            >
+              Different categories
+              indicate different
+              kinds of attention.
             </h2>
           </div>
 
-          <div style={interpretationGridStyle}>
+          <div
+            style={
+              interpretationGridStyle
+            }
+          >
             <InterpretationItem
               title="Risk drives escalation"
               text="Higher current risk can move a site into an active priority even where Strategic Value is lower."
             />
 
             <InterpretationItem
-              title="Strategic value still matters"
-              text="Strategic Value differentiates the response within each level of risk and keeps highly strategic sites visible."
+              title="Strategic Value differentiates the response"
+              text="Strategic Value influences the appropriate outcome within each level of risk."
             />
 
             <InterpretationItem
-              title="Monitor is not unimportant"
-              text="Sites in Monitor remain part of the assessed population and can change category as evidence changes."
+              title="Monitor does not mean unimportant"
+              text="Monitor sites remain part of the assessed population and can change category as evidence changes."
             />
 
             <InterpretationItem
@@ -644,20 +697,28 @@ export default function PriorityPage() {
 
         <section style={ctaStyle}>
           <div>
-            <div style={ctaEyebrowStyle}>
+            <div
+              style={
+                ctaEyebrowStyle
+              }
+            >
               Explore the evidence
             </div>
 
-            <h2 style={ctaTitleStyle}>
+            <h2
+              style={ctaTitleStyle}
+            >
               View the sites behind
-              each category.
+              each outcome.
             </h2>
 
-            <p style={ctaTextStyle}>
+            <p
+              style={ctaTextStyle}
+            >
               Search the full
-              assessed population by
-              priority, borough or
-              risk and open
+              assessed population
+              by priority, borough
+              or risk and open
               individual site
               records for the
               supporting evidence.
@@ -677,8 +738,271 @@ export default function PriorityPage() {
 }
 
 /* =========================================================
+   DATA NORMALISATION
+   ========================================================= */
+
+function normaliseOverview(
+  raw: any
+): OverviewData {
+  /*
+    Allow:
+      { assessedSites: ... }
+
+    or:
+      { overview: { assessedSites: ... } }
+
+    or:
+      { data: { assessedSites: ... } }
+  */
+
+  const source =
+    raw?.overview ??
+    raw?.data ??
+    raw;
+
+  const priorities =
+    source?.priorities ??
+    {};
+
+  const risk =
+    source?.risk ??
+    {};
+
+  const planning =
+    source?.planning ??
+    {};
+
+  const evidence =
+    source?.evidence ??
+    {};
+
+  return {
+    assessedSites:
+      numberValue(
+        source?.assessedSites,
+        source?.assessed_sites
+      ),
+
+    boroughCount:
+      numberValue(
+        source?.boroughCount,
+        source?.borough_count
+      ),
+
+    priorities: {
+      priorityA:
+        numberValue(
+          priorities?.priorityA,
+          priorities?.priority_a,
+          priorities
+            ?.priority_a_count
+        ),
+
+      priorityB:
+        numberValue(
+          priorities?.priorityB,
+          priorities?.priority_b,
+          priorities
+            ?.priority_b_count
+        ),
+
+      priorityC:
+        numberValue(
+          priorities?.priorityC,
+          priorities?.priority_c,
+          priorities
+            ?.priority_c_count
+        ),
+
+      strategicMonitor:
+        numberValue(
+          priorities
+            ?.strategicMonitor,
+          priorities
+            ?.strategic_monitor,
+          priorities
+            ?.strategic_monitor_count
+        ),
+
+      riskReview:
+        numberValue(
+          priorities?.riskReview,
+          priorities?.risk_review,
+          priorities
+            ?.risk_review_count
+        ),
+
+      monitor:
+        numberValue(
+          priorities?.monitor,
+          priorities
+            ?.monitor_count
+        ),
+    },
+
+    risk: {
+      high:
+        numberValue(
+          risk?.high,
+          risk?.high_risk,
+          risk?.high_risk_count
+        ),
+
+      medium:
+        numberValue(
+          risk?.medium,
+          risk?.medium_risk,
+          risk
+            ?.medium_risk_count
+        ),
+
+      noCurrentRisk:
+        numberValue(
+          risk?.noCurrentRisk,
+          risk?.no_current_risk,
+          risk
+            ?.no_current_risk_count
+        ),
+    },
+
+    planning: {
+      confirmedRf6Sites:
+        numberValue(
+          planning
+            ?.confirmedRf6Sites,
+          planning
+            ?.confirmed_rf6_sites,
+          planning
+            ?.confirmedPlanning,
+          planning
+            ?.confirmed_planning_score_count
+        ),
+
+      planningReviewEvidenceSites:
+        numberValue(
+          planning
+            ?.planningReviewEvidenceSites,
+          planning
+            ?.planning_review_evidence_sites,
+          planning
+            ?.planningReview,
+          planning
+            ?.planning_review_count
+        ),
+    },
+
+    evidence: {
+      ppsLinkedSites:
+        numberValue(
+          evidence
+            ?.ppsLinkedSites,
+          evidence
+            ?.pps_linked_sites,
+          evidence
+            ?.pps_linked_count
+        ),
+
+      knownAtRiskSites:
+        numberValue(
+          evidence
+            ?.knownAtRiskSites,
+          evidence
+            ?.known_at_risk_sites,
+          evidence
+            ?.known_at_risk_count
+        ),
+
+      reviewRequiredSites:
+        numberValue(
+          evidence
+            ?.reviewRequiredSites,
+          evidence
+            ?.review_required_sites,
+          evidence
+            ?.review_required_count
+        ),
+
+      imdDecile1To3Sites:
+        numberValue(
+          evidence
+            ?.imdDecile1To3Sites,
+          evidence
+            ?.imd_decile_1_3_sites,
+          evidence
+            ?.imd_decile_1_3_count
+        ),
+    },
+  };
+}
+
+function numberValue(
+  ...values: unknown[]
+): number {
+  for (const value of values) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== ""
+    ) {
+      const parsed =
+        Number(value);
+
+      if (
+        Number.isFinite(parsed)
+      ) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
+/* =========================================================
    COMPONENTS
    ========================================================= */
+
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      style={
+        sectionHeadingStyle
+      }
+    >
+      <div>
+        <div
+          style={eyebrowStyle}
+        >
+          {eyebrow}
+        </div>
+
+        <h2
+          style={
+            sectionTitleStyle
+          }
+        >
+          {title}
+        </h2>
+      </div>
+
+      <p
+        style={
+          sectionDescriptionStyle
+        }
+      >
+        {description}
+      </p>
+    </div>
+  );
+}
 
 function SummaryMetric({
   value,
@@ -690,16 +1014,24 @@ function SummaryMetric({
   text: string;
 }) {
   return (
-    <article style={summaryCardStyle}>
-      <div style={summaryValueStyle}>
+    <article
+      style={summaryCardStyle}
+    >
+      <div
+        style={summaryValueStyle}
+      >
         {formatNumber(value)}
       </div>
 
-      <div style={summaryTitleStyle}>
+      <div
+        style={summaryTitleStyle}
+      >
         {title}
       </div>
 
-      <p style={summaryTextStyle}>
+      <p
+        style={summaryTextStyle}
+      >
         {text}
       </p>
     </article>
@@ -724,7 +1056,9 @@ function PriorityCard({
       : "#506774";
 
   return (
-    <article style={priorityCardStyle}>
+    <article
+      style={priorityCardStyle}
+    >
       <div
         style={{
           ...priorityAccentStyle,
@@ -732,14 +1066,30 @@ function PriorityCard({
         }}
       />
 
-      <div style={priorityCardBodyStyle}>
-        <div style={priorityCardHeaderStyle}>
+      <div
+        style={
+          priorityCardBodyStyle
+        }
+      >
+        <div
+          style={
+            priorityCardHeaderStyle
+          }
+        >
           <div>
-            <div style={priorityNameStyle}>
+            <div
+              style={
+                priorityNameStyle
+              }
+            >
               {name}
             </div>
 
-            <div style={priorityCountStyle}>
+            <div
+              style={
+                priorityCountStyle
+              }
+            >
               {formatNumber(
                 count
               )}
@@ -754,11 +1104,19 @@ function PriorityCard({
           />
         </div>
 
-        <div style={prioritySummaryStyle}>
+        <div
+          style={
+            prioritySummaryStyle
+          }
+        >
           {summary}
         </div>
 
-        <p style={priorityInterpretationStyle}>
+        <p
+          style={
+            priorityInterpretationStyle
+          }
+        >
           {interpretation}
         </p>
 
@@ -782,7 +1140,11 @@ function MatrixRow({
 }) {
   return (
     <tr>
-      <th style={matrixRiskHeaderStyle}>
+      <th
+        style={
+          matrixRiskHeaderStyle
+        }
+      >
         {risk}
       </th>
 
@@ -793,7 +1155,9 @@ function MatrixRow({
         ) => (
           <td
             key={`${risk}-${index}`}
-            style={matrixCellStyle}
+            style={
+              matrixCellStyle
+            }
           >
             <span
               style={getMatrixBadgeStyle(
@@ -809,6 +1173,38 @@ function MatrixRow({
   );
 }
 
+function PlanningMetric({
+  value,
+  label,
+}: {
+  value: number;
+  label: string;
+}) {
+  return (
+    <div
+      style={
+        planningMetricStyle
+      }
+    >
+      <div
+        style={
+          planningMetricValueStyle
+        }
+      >
+        {formatNumber(value)}
+      </div>
+
+      <div
+        style={
+          planningMetricLabelStyle
+        }
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
 function InterpretationItem({
   title,
   text,
@@ -817,12 +1213,24 @@ function InterpretationItem({
   text: string;
 }) {
   return (
-    <div style={interpretationItemStyle}>
-      <div style={interpretationItemTitleStyle}>
+    <div
+      style={
+        interpretationItemStyle
+      }
+    >
+      <div
+        style={
+          interpretationItemTitleStyle
+        }
+      >
         {title}
       </div>
 
-      <div style={interpretationItemTextStyle}>
+      <div
+        style={
+          interpretationItemTextStyle
+        }
+      >
         {text}
       </div>
     </div>
@@ -834,13 +1242,10 @@ function InterpretationItem({
    ========================================================= */
 
 function formatNumber(
-  value:
-    | number
-    | null
-    | undefined
+  value: number
 ) {
   return Number(
-    value ?? 0
+    value
   ).toLocaleString(
     "en-GB"
   );
@@ -855,7 +1260,9 @@ function getMatrixBadgeStyle(
   let color =
     "#333333";
 
-  if (value === "Priority A") {
+  if (
+    value === "Priority A"
+  ) {
     background =
       "#f6d7d9";
 
@@ -863,7 +1270,9 @@ function getMatrixBadgeStyle(
       "#8a1c22";
   }
 
-  if (value === "Priority B") {
+  if (
+    value === "Priority B"
+  ) {
     background =
       "#f8e3cf";
 
@@ -871,7 +1280,9 @@ function getMatrixBadgeStyle(
       "#7c4217";
   }
 
-  if (value === "Priority C") {
+  if (
+    value === "Priority C"
+  ) {
     background =
       "#f5eccf";
 
@@ -879,7 +1290,9 @@ function getMatrixBadgeStyle(
       "#66551d";
   }
 
-  if (value === "Risk Review") {
+  if (
+    value === "Risk Review"
+  ) {
     background =
       "#eee4f4";
 
@@ -898,7 +1311,9 @@ function getMatrixBadgeStyle(
       "#355c67";
   }
 
-  if (value === "Monitor") {
+  if (
+    value === "Monitor"
+  ) {
     background =
       "#eeeeec";
 
@@ -928,12 +1343,28 @@ function getMatrixBadgeStyle(
 const pageStyle: CSSProperties = {
   maxWidth: "1440px",
   margin: "0 auto",
-  padding: "38px 28px 90px",
+  padding:
+    "38px 28px 90px",
 };
 
-const loadingStyle: CSSProperties = {
-  padding: "80px 0",
-  color: "#666666",
+const loadingCardStyle: CSSProperties = {
+  marginTop: "35px",
+  padding: "34px",
+  background: "#ffffff",
+  border:
+    "1px solid #e2ded9",
+  borderRadius: "16px",
+};
+
+const loadingTitleStyle: CSSProperties = {
+  fontSize: "18px",
+  fontWeight: 850,
+};
+
+const loadingTextStyle: CSSProperties = {
+  marginTop: "7px",
+  color: "#777777",
+  fontSize: "12px",
 };
 
 const errorStyle: CSSProperties = {
@@ -1245,7 +1676,7 @@ const planningTextStyle: CSSProperties = {
 const planningMetricsStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(2, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(145px, 1fr))",
   gap: "12px",
 };
 
