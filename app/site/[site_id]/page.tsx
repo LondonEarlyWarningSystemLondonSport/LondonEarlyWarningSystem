@@ -1,17 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import type {
+  CSSProperties,
+} from "react";
+
 import Link from "next/link";
+
+import { useParams } from "next/navigation";
+
 import AppShell from "../../../components/AppShell";
 
+type TabKey =
+  | "summary"
+  | "risk"
+  | "strategic"
+  | "facilities"
+  | "evidence";
+
 type SiteDetail = {
-  site_id: number;
-  site_name: string;
+  site_id: string | number | null;
+  site_name: string | null;
   postcode: string | null;
-  borough: string;
+  borough: string | null;
+
   latitude: number | null;
   longitude: number | null;
+
   playing_field_status: string | null;
 
   priority_category: string | null;
@@ -55,14 +75,17 @@ type SiteDetail = {
   planning_candidate_application_count: number | null;
   confirmed_rf6_application_count: number | null;
   nearest_planning_candidate_distance_metres: number | null;
+
   rf6_scoring_status: string | null;
   rf6_scoring_note: string | null;
 
   review_reason: string | null;
 
-  possible_3g_data_quality_flag: number | string | null;
+  possible_3g_data_quality_flag: string | null;
+
   sv4_single_recorded_provision_flag: string | null;
   sv4_review_note: string | null;
+
   missing_imd_flag: string | null;
   missing_owner_flag: string | null;
   missing_management_flag: string | null;
@@ -72,129 +95,235 @@ type SiteDetail = {
   phase1_3_methodology_note: string | null;
 };
 
-type SiteApiResponse = {
-  success: boolean;
-  site?: SiteDetail;
-  error?: string;
-};
-
-type TabName =
-  | "summary"
-  | "strategic"
-  | "risk"
-  | "facilities"
-  | "evidence";
-
-const tabs: {
-  id: TabName;
-  label: string;
-}[] = [
-  {
-    id: "summary",
-    label: "Summary",
-  },
-  {
-    id: "strategic",
-    label: "Strategic Value",
-  },
-  {
-    id: "risk",
-    label: "Risk & Planning",
-  },
-  {
-    id: "facilities",
-    label: "Facilities",
-  },
-  {
-    id: "evidence",
-    label: "Evidence & Quality",
-  },
-];
+type SiteApiResponse =
+  | SiteDetail
+  | {
+      success?: boolean;
+      site?: SiteDetail;
+      data?: SiteDetail;
+      error?: string;
+    };
 
 export default function SiteDetailPage() {
-  const params = useParams<{ site_id: string }>();
-  const siteId = params.site_id;
+  const params =
+    useParams();
 
-  const [site, setSite] = useState<SiteDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const siteId =
+    Array.isArray(
+      params?.site_id
+    )
+      ? params.site_id[0]
+      : String(
+          params?.site_id ||
+            ""
+        );
 
-  const [activeTab, setActiveTab] =
-    useState<TabName>("summary");
+  const [
+    site,
+    setSite,
+  ] =
+    useState<SiteDetail | null>(
+      null
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    activeTab,
+    setActiveTab,
+  ] =
+    useState<TabKey>(
+      "summary"
+    );
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadSite() {
       try {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(
-          `/api/sites/${siteId}`,
-          {
-            cache: "no-store",
-          }
-        );
+        const response =
+          await fetch(
+            `/api/sites/${encodeURIComponent(
+              siteId
+            )}`,
+            {
+              cache:
+                "no-store",
+            }
+          );
 
-        const data: SiteApiResponse =
+        const raw:
+          SiteApiResponse =
           await response.json();
 
-        if (
-          !response.ok ||
-          !data.success ||
-          !data.site
-        ) {
+        if (!response.ok) {
           throw new Error(
-            data.error || "Unable to load site"
+            (
+              raw as {
+                error?: string;
+              }
+            )?.error ||
+              "Unable to load site."
           );
         }
 
-        setSite(data.site);
+        const result =
+          normaliseSiteResponse(
+            raw
+          );
+
+        if (!result) {
+          throw new Error(
+            "No site record was returned."
+          );
+        }
+
+        if (!cancelled) {
+          setSite(result);
+        }
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load site"
-        );
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load site."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     if (siteId) {
       loadSite();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [siteId]);
+
+  const qualityIssues =
+    useMemo(() => {
+      if (!site) {
+        return [];
+      }
+
+      const issues: {
+        title: string;
+        text: string;
+      }[] = [];
+
+      if (
+        isYes(
+          site.missing_owner_flag
+        )
+      ) {
+        issues.push({
+          title:
+            "Ownership data missing",
+          text:
+            "Current ownership information is not available for this site.",
+        });
+      }
+
+      if (
+        isYes(
+          site.missing_management_flag
+        )
+      ) {
+        issues.push({
+          title:
+            "Management data missing",
+          text:
+            "Current management information is not available for this site.",
+        });
+      }
+
+      if (
+        isYes(
+          site.missing_imd_flag
+        )
+      ) {
+        issues.push({
+          title:
+            "Deprivation evidence missing",
+          text:
+            "The deprivation element of Strategic Value could not be populated from the available evidence.",
+        });
+      }
+
+      if (
+        isYes(
+          site.possible_3g_data_quality_flag
+        )
+      ) {
+        issues.push({
+          title:
+            "3G evidence requires review",
+          text:
+            "The recorded 3G provision may require further data-quality checking.",
+        });
+      }
+
+      if (
+        isYes(
+          site.sv4_single_recorded_provision_flag
+        )
+      ) {
+        issues.push({
+          title:
+            "Borough provision evidence requires review",
+          text:
+            site.sv4_review_note ||
+            "The borough provision evidence should be interpreted with care.",
+        });
+      }
+
+      if (
+        site.review_reason
+      ) {
+        issues.push({
+          title:
+            "Manual review flag",
+          text:
+            site.review_reason,
+        });
+      }
+
+      return issues;
+    }, [site]);
 
   if (loading) {
     return (
       <AppShell>
         <main style={pageStyle}>
-          <div style={loadingStyle}>
-            Loading site assessment...
-          </div>
-        </main>
-      </AppShell>
-    );
-  }
+          <div style={loadingCardStyle}>
+            <div style={loadingTitleStyle}>
+              Loading site
+              assessment
+            </div>
 
-  if (error || !site) {
-    return (
-      <AppShell>
-        <main style={pageStyle}>
-          <Link
-            href="/sites"
-            style={backLinkStyle}
-          >
-            ← Back to Explore Sites
-          </Link>
-
-          <div style={errorStyle}>
-            <strong>
-              We could not load this site.
-            </strong>
-
-            <div style={{ marginTop: "6px" }}>
-              {error || "Site not found"}
+            <div style={loadingTextStyle}>
+              Retrieving the latest
+              site-level evidence.
             </div>
           </div>
         </main>
@@ -202,10 +331,58 @@ export default function SiteDetailPage() {
     );
   }
 
+  if (
+    error ||
+    !site
+  ) {
+    return (
+      <AppShell>
+        <main style={pageStyle}>
+          <div style={errorStyle}>
+            <strong>
+              Site assessment could
+              not be loaded.
+            </strong>
+
+            <div
+              style={{
+                marginTop:
+                  "8px",
+              }}
+            >
+              {error ||
+                "Site unavailable."}
+            </div>
+
+            <div
+              style={{
+                marginTop:
+                  "16px",
+              }}
+            >
+              <Link
+                href="/sites"
+                style={backLinkStyle}
+              >
+                ← Back to Explore
+                Sites
+              </Link>
+            </div>
+          </div>
+        </main>
+      </AppShell>
+    );
+  }
+
+  const planningState =
+    getPlanningState(
+      site
+    );
+
   return (
     <AppShell>
       <main style={pageStyle}>
-        <div style={backRowStyle}>
+        <div style={topLinksStyle}>
           <Link
             href="/sites"
             style={backLinkStyle}
@@ -213,377 +390,674 @@ export default function SiteDetailPage() {
             ← Explore Sites
           </Link>
 
-          <span style={siteIdStyle}>
-            Site ID {site.site_id}
-          </span>
+          <Link
+            href="/about#assessment"
+            style={methodLinkStyle}
+          >
+            How this assessment
+            works →
+          </Link>
         </div>
 
-        <SiteHero site={site} />
+        <section style={heroStyle}>
+          <div style={heroTopStyle}>
+            <div>
+              <div style={heroEyebrowStyle}>
+                {
+                  site.borough ||
+                  "London"
+                }
+              </div>
 
-        <section style={workspaceStyle}>
-          <div style={tabScrollStyle}>
-            <div style={tabsStyle}>
-              {tabs.map((tab) => {
-                const active =
-                  activeTab === tab.id;
+              <h1 style={heroTitleStyle}>
+                {site.site_name ||
+                  "Unnamed site"}
+              </h1>
 
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() =>
-                      setActiveTab(tab.id)
-                    }
-                    style={{
-                      ...tabStyle,
-                      ...(active
-                        ? activeTabStyle
-                        : {}),
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+              <div style={heroLocationStyle}>
+                {[
+                  site.postcode,
+                  site.playing_field_status,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            </div>
+
+            <div style={priorityPanelStyle}>
+              <div style={priorityLabelStyle}>
+                Current outcome
+              </div>
+
+              <div style={priorityValueStyle}>
+                {site.priority_category ||
+                  "Not assigned"}
+              </div>
             </div>
           </div>
 
-          <div style={tabContentStyle}>
-            {activeTab === "summary" && (
-              <SummaryTab site={site} />
-            )}
+          <div style={heroMetricsStyle}>
+            <HeroMetric
+              label="Risk Exposure"
+              value={
+                site.risk_band ||
+                "Not recorded"
+              }
+              supporting={
+                site.risk_exposure_score !==
+                null
+                  ? `Score ${site.risk_exposure_score}`
+                  : undefined
+              }
+            />
 
-            {activeTab === "strategic" && (
-              <StrategicTab site={site} />
-            )}
+            <HeroMetric
+              label="Strategic Value"
+              value={
+                site.strategic_value_band ||
+                "Not recorded"
+              }
+              supporting={
+                site.strategic_value_score !==
+                null
+                  ? `Score ${site.strategic_value_score}`
+                  : undefined
+              }
+            />
 
-            {activeTab === "risk" && (
-              <RiskTab site={site} />
-            )}
+            <HeroMetric
+              label="Planning evidence"
+              value={
+                planningState.shortLabel
+              }
+              supporting={
+                planningState.supporting
+              }
+            />
 
-            {activeTab === "facilities" && (
-              <FacilitiesTab site={site} />
-            )}
-
-            {activeTab === "evidence" && (
-              <EvidenceTab site={site} />
-            )}
+            <HeroMetric
+              label="Review status"
+              value={
+                qualityIssues.length >
+                0
+                  ? "Review flagged"
+                  : "No additional review flag"
+              }
+              supporting={
+                qualityIssues.length >
+                0
+                  ? `${qualityIssues.length} ${
+                      qualityIssues.length ===
+                      1
+                        ? "item"
+                        : "items"
+                    }`
+                  : undefined
+              }
+            />
           </div>
         </section>
+
+        <div style={tabsWrapStyle}>
+          <TabButton
+            active={
+              activeTab ===
+              "summary"
+            }
+            onClick={() =>
+              setActiveTab(
+                "summary"
+              )
+            }
+          >
+            Summary
+          </TabButton>
+
+          <TabButton
+            active={
+              activeTab ===
+              "risk"
+            }
+            onClick={() =>
+              setActiveTab("risk")
+            }
+          >
+            Risk & Planning
+          </TabButton>
+
+          <TabButton
+            active={
+              activeTab ===
+              "strategic"
+            }
+            onClick={() =>
+              setActiveTab(
+                "strategic"
+              )
+            }
+          >
+            Strategic Value
+          </TabButton>
+
+          <TabButton
+            active={
+              activeTab ===
+              "facilities"
+            }
+            onClick={() =>
+              setActiveTab(
+                "facilities"
+              )
+            }
+          >
+            Facilities
+          </TabButton>
+
+          <TabButton
+            active={
+              activeTab ===
+              "evidence"
+            }
+            onClick={() =>
+              setActiveTab(
+                "evidence"
+              )
+            }
+          >
+            Evidence & Quality
+          </TabButton>
+        </div>
+
+        {activeTab ===
+          "summary" && (
+          <SummaryTab
+            site={site}
+            planningState={
+              planningState
+            }
+            qualityIssues={
+              qualityIssues
+            }
+            onGoToRisk={() =>
+              setActiveTab("risk")
+            }
+            onGoToStrategic={() =>
+              setActiveTab(
+                "strategic"
+              )
+            }
+          />
+        )}
+
+        {activeTab ===
+          "risk" && (
+          <RiskTab
+            site={site}
+            planningState={
+              planningState
+            }
+          />
+        )}
+
+        {activeTab ===
+          "strategic" && (
+          <StrategicTab
+            site={site}
+          />
+        )}
+
+        {activeTab ===
+          "facilities" && (
+          <FacilitiesTab
+            site={site}
+          />
+        )}
+
+        {activeTab ===
+          "evidence" && (
+          <EvidenceTab
+            site={site}
+            qualityIssues={
+              qualityIssues
+            }
+          />
+        )}
       </main>
     </AppShell>
   );
 }
 
-function SiteHero({
+function SummaryTab({
   site,
+  planningState,
+  qualityIssues,
+  onGoToRisk,
+  onGoToStrategic,
 }: {
   site: SiteDetail;
+  planningState: PlanningState;
+  qualityIssues: {
+    title: string;
+    text: string;
+  }[];
+  onGoToRisk: () => void;
+  onGoToStrategic: () => void;
 }) {
   return (
-    <section style={heroStyle}>
-      <div style={heroTopStyle}>
-        <div>
-          <div style={eyebrowStyle}>
-            Current playing field assessment
+    <>
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Current assessment"
+          title="Why this site has its current outcome"
+          description="The outcome reflects the combination of Risk Exposure and Strategic Value. These dimensions are assessed separately before being combined through the risk-led priority matrix."
+        />
+
+        <div style={summaryAssessmentGridStyle}>
+          <button
+            type="button"
+            onClick={onGoToRisk}
+            style={dimensionCardButtonStyle}
+          >
+            <div style={dimensionEyebrowStyle}>
+              Risk Exposure
+            </div>
+
+            <div style={dimensionValueStyle}>
+              {site.risk_band ||
+                "Not recorded"}
+            </div>
+
+            <div style={dimensionScoreStyle}>
+              {site.risk_exposure_score !==
+              null
+                ? `Score ${site.risk_exposure_score}`
+                : "Score unavailable"}
+            </div>
+
+            <p style={dimensionTextStyle}>
+              Based on ownership,
+              management, known
+              at-risk evidence and
+              planning pressure.
+            </p>
+
+            <div style={dimensionLinkStyle}>
+              View Risk & Planning
+              →
+            </div>
+          </button>
+
+          <div style={combineSymbolStyle}>
+            +
           </div>
 
-          <h1 style={heroTitleStyle}>
-            {formatSiteName(site.site_name)}
-          </h1>
+          <button
+            type="button"
+            onClick={
+              onGoToStrategic
+            }
+            style={dimensionCardButtonStyle}
+          >
+            <div style={dimensionEyebrowStyle}>
+              Strategic Value
+            </div>
 
-          <div style={locationStyle}>
-            {site.borough}
+            <div style={dimensionValueStyle}>
+              {site.strategic_value_band ||
+                "Not recorded"}
+            </div>
 
-            {site.postcode &&
-              ` · ${site.postcode}`}
+            <div style={dimensionScoreStyle}>
+              {site.strategic_value_score !==
+              null
+                ? `Score ${site.strategic_value_score}`
+                : "Score unavailable"}
+            </div>
 
-            {site.playing_field_status &&
-              ` · ${site.playing_field_status}`}
+            <p style={dimensionTextStyle}>
+              Based on scale,
+              strategic provision,
+              borough significance,
+              Inner London and
+              deprivation evidence.
+            </p>
+
+            <div style={dimensionLinkStyle}>
+              View Strategic Value
+              →
+            </div>
+          </button>
+
+          <div style={combineSymbolStyle}>
+            =
+          </div>
+
+          <div style={outcomeCardStyle}>
+            <div style={outcomeEyebrowStyle}>
+              Outcome
+            </div>
+
+            <div style={outcomeValueStyle}>
+              {site.priority_category ||
+                "Not assigned"}
+            </div>
+
+            <p style={outcomeDescriptionStyle}>
+              {getOutcomeDescription(
+                site.priority_category
+              )}
+            </p>
           </div>
         </div>
+      </section>
 
-        <div style={heroPriorityStyle}>
-          <div style={priorityLabelStyle}>
-            Current priority
-          </div>
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Current evidence"
+          title="Key evidence for this site"
+          description="This summary highlights the information most relevant to interpreting the current assessment."
+        />
 
-          <PriorityBadge
+        <div style={summaryInfoGridStyle}>
+          <InfoCard
+            title="Playing-field status"
             value={
-              site.priority_category ||
-              "Not classified"
+              site.playing_field_status ||
+              "Not recorded"
             }
-            large
+            text="Current status in the assessed playing-field evidence."
+          />
+
+          <InfoCard
+            title="Ownership"
+            value={
+              site.owner_type ||
+              "Not recorded"
+            }
+            text="Current ownership evidence used in the Risk Exposure assessment."
+          />
+
+          <InfoCard
+            title="Management"
+            value={
+              site.management_type ||
+              "Not recorded"
+            }
+            text="Current management evidence used in the Risk Exposure assessment."
+          />
+
+          <InfoCard
+            title="Planning evidence"
+            value={
+              planningState.shortLabel
+            }
+            text={
+              planningState.description
+            }
           />
         </div>
-      </div>
+      </section>
 
-      <div style={heroMetricsStyle}>
-        <HeroMetric
-          label="Risk"
-          value={site.risk_band || "Not available"}
-          detail={
-            site.risk_exposure_score !== null
-              ? `Risk score ${site.risk_exposure_score}`
-              : undefined
-          }
-          type="risk"
-        />
+      {qualityIssues.length >
+        0 && (
+        <section style={sectionStyle}>
+          <SectionHeading
+            eyebrow="Review"
+            title="Evidence requiring attention"
+            description="Review flags do not automatically change the site's outcome. They identify evidence that should be interpreted or checked with additional care."
+          />
 
-        <HeroMetric
-          label="Strategic value"
-          value={
-            site.strategic_value_band ||
-            "Not available"
-          }
-          detail={
-            site.strategic_value_score !== null
-              ? `Strategic score ${site.strategic_value_score}`
-              : undefined
-          }
-        />
+          <div style={issueGridStyle}>
+            {qualityIssues.map(
+              (
+                issue
+              ) => (
+                <IssueCard
+                  key={
+                    `${issue.title}-${issue.text}`
+                  }
+                  title={
+                    issue.title
+                  }
+                  text={
+                    issue.text
+                  }
+                />
+              )
+            )}
+          </div>
+        </section>
+      )}
 
-        <HeroMetric
-          label="Planning pressure"
-          value={
-            (site.rf6_planning_pressure_score ??
-              0) > 0
-              ? `RF6 score ${site.rf6_planning_pressure_score}`
-              : "No RF6 score"
-          }
-          detail={
-            (site.confirmed_rf6_application_count ??
-              0) > 0
-              ? `${site.confirmed_rf6_application_count} confirmed RF6 evidence ${
-                  site.confirmed_rf6_application_count ===
-                  1
-                    ? "record"
-                    : "records"
-                }`
-              : "No confirmed RF6 application"
-          }
-        />
-
-        <HeroMetric
-          label="Assessment scope"
-          value={
-            site.phase1_3_scope_tag ||
-            "Current Playing Field"
-          }
-        />
-      </div>
-    </section>
+      <MethodologyCallout />
+    </>
   );
 }
 
-function SummaryTab({
+function RiskTab({
   site,
+  planningState,
 }: {
   site: SiteDetail;
+  planningState: PlanningState;
 }) {
-  const candidates =
-    site.planning_candidate_application_count ??
-    0;
-
-  const confirmed =
-    site.confirmed_rf6_application_count ?? 0;
-
-  const rf6 =
-    site.rf6_planning_pressure_score ?? 0;
-
   return (
     <>
-      <section style={attentionPanelStyle}>
-        <div style={attentionLabelStyle}>
-          Why this site matters
-        </div>
-
-        <h2 style={attentionTitleStyle}>
-          {getSummaryHeadline(site)}
-        </h2>
-
-        <p style={attentionTextStyle}>
-          {getWhyThisSiteMatters(site)}
-        </p>
-      </section>
-
-      <div style={twoColumnGridStyle}>
-        <SectionCard
-          eyebrow="Current position"
-          title="Assessment at a glance"
-        >
-          <InfoRow
-            label="Priority category"
-            value={
-              site.priority_category
-            }
-          />
-
-          <InfoRow
-            label="Risk band"
-            value={site.risk_band}
-          />
-
-          <InfoRow
-            label="Strategic value"
-            value={
-              site.strategic_value_band
-            }
-          />
-
-          <InfoRow
-            label="Playing field status"
-            value={
-              site.playing_field_status
-            }
-          />
-
-          <InfoRow
-            label="Owner type"
-            value={cleanValue(
-              site.owner_type
-            )}
-          />
-
-          <InfoRow
-            label="Management"
-            value={cleanValue(
-              site.management_type
-            )}
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="Evidence signals"
-          title="What is contributing?"
-        >
-          <SignalRow
-            label="Ownership exposure"
-            code="RF1"
-            score={
-              site.rf1_ownership_exposure_score
-            }
-          />
-
-          <SignalRow
-            label="Management exposure"
-            code="RF2"
-            score={
-              site.rf2_management_exposure_score
-            }
-          />
-
-          <SignalRow
-            label="PPS at-risk evidence"
-            code="RF3"
-            score={
-              site.rf3_pps_at_risk_score
-            }
-          />
-
-          <SignalRow
-            label="Planning pressure"
-            code="RF6"
-            score={
-              site.rf6_planning_pressure_score
-            }
-          />
-        </SectionCard>
-      </div>
-
       <section style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
+        <SectionHeading
+          eyebrow="Risk Exposure"
+          title="How exposed is this site to loss, decline, reduced access or change?"
+          description="Risk indicators are early-warning evidence. A risk score or band should not be interpreted as confirmation that the site will be lost, closed or developed."
+        />
+
+        <div style={bandSummaryStyle}>
           <div>
-            <div style={sectionEyebrowStyle}>
-              Planning evidence
+            <div style={bandSummaryLabelStyle}>
+              Current Risk Exposure
             </div>
 
-            <h2 style={sectionTitleStyle}>
-              Planning-pressure context
-            </h2>
+            <div style={bandSummaryValueStyle}>
+              {site.risk_band ||
+                "Not recorded"}
+            </div>
+          </div>
+
+          <div>
+            <div style={bandSummaryLabelStyle}>
+              Risk score
+            </div>
+
+            <div style={bandSummaryNumberStyle}>
+              {site.risk_exposure_score ??
+                "—"}
+            </div>
           </div>
         </div>
 
-        <div style={metricGridStyle}>
-          <MetricCard
-            value={candidates}
-            label="Planning candidates identified"
-          />
-
-          <MetricCard
-            value={confirmed}
-            label="Confirmed RF6 applications"
-          />
-
-          <MetricCard
-            value={
-              site.nearest_planning_candidate_distance_metres !==
-              null
-                ? `${site.nearest_planning_candidate_distance_metres} m`
-                : "N/A"
+        <div style={criteriaGridStyle}>
+          <AssessmentCriterion
+            title="Ownership exposure"
+            score={
+              site.rf1_ownership_exposure_score
             }
-            label="Nearest planning candidate"
+            maxScore={2}
+            evidence={
+              site.owner_type ||
+              "Ownership not recorded"
+            }
+            description="Assesses whether the current ownership arrangement creates greater exposure to loss, reduced access or change."
           />
 
-          <MetricCard
-            value={rf6}
-            label="RF6 planning-pressure score"
+          <AssessmentCriterion
+            title="Management exposure"
+            score={
+              site.rf2_management_exposure_score
+            }
+            maxScore={2}
+            evidence={
+              site.management_type ||
+              "Management not recorded"
+            }
+            description="Assesses whether the current management arrangement creates greater exposure to loss or reduced access."
+          />
+
+          <AssessmentCriterion
+            title="Known at-risk evidence"
+            score={
+              site.rf3_pps_at_risk_score
+            }
+            maxScore={5}
+            evidence={
+              getKnownRiskEvidence(
+                site
+              )
+            }
+            description="Recognises existing protection intelligence where a credible concern has already been recorded."
+          />
+
+          <AssessmentCriterion
+            title="Planning pressure"
+            score={
+              site.rf6_planning_pressure_score
+            }
+            maxScore={3}
+            evidence={
+              planningState.shortLabel
+            }
+            description="Uses sufficiently strong site-linked planning evidence as an early-warning signal while keeping weaker evidence separate for review."
           />
         </div>
-
-        <PlanningInterpretation
-          site={site}
-        />
       </section>
 
-      <div style={twoColumnGridStyle}>
-        <SectionCard
-          eyebrow="Playing field"
-          title="Provision snapshot"
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Planning evidence"
+          title="How planning evidence is being treated for this site"
+          description="Nearby development activity does not automatically create a planning risk signal. The evidence must meet the governed Planning Pressure rules before it can contribute directly to Risk Exposure."
+        />
+
+        <div
+          style={{
+            ...planningPanelStyle,
+            borderColor:
+              planningState.border,
+            background:
+              planningState.background,
+          }}
         >
-          <ProvisionSummary site={site} />
-        </SectionCard>
+          <div style={planningStatusTopStyle}>
+            <div>
+              <div style={planningLabelStyle}>
+                Current status
+              </div>
 
-        <SectionCard
-          eyebrow="Evidence source"
-          title="PPS context"
-        >
-          <InfoRow
-            label="PPS critical site"
-            value={
-              site.pps_critical_site_flag
+              <div style={planningStatusTitleStyle}>
+                {planningState.label}
+              </div>
+            </div>
+
+            <span
+              style={{
+                ...planningBadgeStyle,
+                color:
+                  planningState.text,
+                background:
+                  planningState.badge,
+              }}
+            >
+              {
+                planningState.shortLabel
+              }
+            </span>
+          </div>
+
+          <p style={planningDescriptionStyle}>
+            {
+              planningState.description
             }
+          </p>
+
+          <div style={planningMetricsStyle}>
+            <MetricBox
+              label="Planning evidence records identified"
+              value={
+                site.planning_candidate_application_count ??
+                0
+              }
+            />
+
+            <MetricBox
+              label="Evidence records contributing"
+              value={
+                site.confirmed_rf6_application_count ??
+                0
+              }
+            />
+
+            <MetricBox
+              label="Nearest identified evidence"
+              value={
+                formatDistance(
+                  site.nearest_planning_candidate_distance_metres
+                )
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="PPS context"
+          title="Additional protection evidence"
+          description="Playing Pitch Strategy evidence provides supporting context where a site has been successfully linked."
+        />
+
+        <div style={summaryInfoGridStyle}>
+          <InfoCard
+            title="Known critical / at-risk evidence"
+            value={
+              site.pps_critical_site_flag ||
+              "Not recorded"
+            }
+            text="Whether linked PPS evidence identifies a protection concern."
           />
 
-          <InfoRow
-            label="PPS ownership"
+          <InfoCard
+            title="Community use"
             value={
-              site.pps_ownership_type
+              site.pps_community_use_flag ||
+              "Not recorded"
             }
+            text="Community-use status recorded in the linked PPS evidence."
           />
 
-          <InfoRow
-            label="PPS management"
+          <InfoCard
+            title="Security of tenure"
             value={
-              site.pps_management_type
+              site.pps_security_of_tenure ||
+              "Not recorded"
             }
+            text="Security-of-tenure information recorded in the linked PPS evidence."
           />
 
-          <InfoRow
-            label="Security of tenure"
+          <InfoCard
+            title="PPS ownership / management"
             value={
-              site.pps_security_of_tenure
+              [
+                site.pps_ownership_type,
+                site.pps_management_type,
+              ]
+                .filter(Boolean)
+                .join(" / ") ||
+              "Not recorded"
             }
+            text="Ownership and management context from the linked PPS evidence."
           />
+        </div>
+      </section>
 
-          <InfoRow
-            label="Community use"
-            value={
-              site.pps_community_use_flag
-            }
-          />
-        </SectionCard>
-      </div>
+      <MethodologyCallout />
     </>
   );
 }
@@ -595,272 +1069,161 @@ function StrategicTab({
 }) {
   return (
     <>
-      <section style={introPanelStyle}>
-        <div>
-          <div style={sectionEyebrowStyle}>
-            Strategic value
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Strategic Value"
+          title="How important is this site to current or future sport and physical activity provision?"
+          description="Strategic Value is assessed independently from Risk Exposure. A strategically important site can therefore remain in monitoring if there is no current risk signal."
+        />
+
+        <div style={bandSummaryStyle}>
+          <div>
+            <div style={bandSummaryLabelStyle}>
+              Strategic Value band
+            </div>
+
+            <div style={bandSummaryValueStyle}>
+              {site.strategic_value_band ||
+                "Not recorded"}
+            </div>
           </div>
 
-          <h2 style={introTitleStyle}>
-            Why is this site strategically
-            important?
-          </h2>
+          <div>
+            <div style={bandSummaryLabelStyle}>
+              Strategic Value score
+            </div>
 
-          <p style={introTextStyle}>
-            Strategic value is assessed separately
-            from risk. The factors below describe the
-            characteristics that determine the site&apos;s
-            strategic importance within the current
-            Phase 1.3 assessment.
-          </p>
+            <div style={bandSummaryNumberStyle}>
+              {site.strategic_value_score ??
+                "—"}
+              <span style={scoreMaxStyle}>
+                / 15
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div style={scoreHeroStyle}>
-          <div style={scoreHeroLabelStyle}>
-            Strategic value
-          </div>
+        <div style={criteriaGridStyle}>
+          <AssessmentCriterion
+            title="Multi-pitch scale"
+            score={
+              site.sv1_multi_pitch_scale_score
+            }
+            maxScore={3}
+            evidence={getMultiPitchEvidence(
+              site
+            )}
+            description="Recognises larger playing-field sites with multiple adult or senior football and rugby pitch units."
+          />
 
-          <div style={scoreHeroValueStyle}>
-            {site.strategic_value_score ??
-              "N/A"}
-          </div>
+          <AssessmentCriterion
+            title="Full-size 3G provision"
+            score={
+              site.sv2_full_size_3g_score
+            }
+            maxScore={3}
+            evidence={`${formatNumberValue(
+              site.full_size_3g_pitch_units
+            )} full-size 3G ${
+              site.full_size_3g_pitch_units ===
+              1
+                ? "pitch"
+                : "pitches"
+            }`}
+            description="Recognises sites providing one or more confirmed full-size third-generation artificial grass pitches."
+          />
 
-          <div style={scoreHeroBandStyle}>
-            {site.strategic_value_band ||
-              "Not available"}
-          </div>
-        </div>
-      </section>
+          <AssessmentCriterion
+            title="Strategic sport provision"
+            score={
+              site.sv3_strategic_sport_score
+            }
+            maxScore={2}
+            evidence={getStrategicSportEvidence(
+              site
+            )}
+            description="Recognises strategic playing-field sports including rugby, cricket and hockey provision."
+          />
 
-      <div style={factorGridStyle}>
-        <FactorCard
-          code="SV1"
-          title="Multi-pitch scale"
-          score={
-            site.sv1_multi_pitch_scale_score
-          }
-          explanation="Recognises the scale of adult football and rugby provision recorded at the site."
-        />
+          <AssessmentCriterion
+            title="Share of borough provision"
+            score={
+              site.sv4_share_of_borough_provision_score
+            }
+            maxScore={3}
+            evidence={
+              site.sv4_single_recorded_provision_flag ===
+              "Yes"
+                ? "Borough provision evidence requires review"
+                : "Borough-level provision comparison"
+            }
+            description="Recognises sites that account for a significant share of equivalent playing-field provision within their borough."
+          />
 
-        <FactorCard
-          code="SV2"
-          title="Full-size 3G provision"
-          score={
-            site.sv2_full_size_3g_score
-          }
-          explanation="Identifies strategic full-size 3G provision within the current playing field evidence."
-        />
+          <AssessmentCriterion
+            title="Inner London"
+            score={
+              site.sv5_inner_london_score
+            }
+            maxScore={2}
+            evidence={
+              site.sv5_inner_london_score ===
+              2
+                ? "Inner London weighting applied"
+                : "Inner London weighting not applied"
+            }
+            description="Recognises the additional strategic significance of playing-field provision in Inner London."
+          />
 
-        <FactorCard
-          code="SV3"
-          title="Strategic sport"
-          score={
-            site.sv3_strategic_sport_score
-          }
-          explanation="Reflects the presence of strategic sport provision within the assessment."
-        />
-
-        <FactorCard
-          code="SV4"
-          title="Share of borough provision"
-          score={
-            site.sv4_share_of_borough_provision_score
-          }
-          explanation="Assesses the site's relative contribution to recorded provision within its borough."
-        />
-
-        <FactorCard
-          code="SV5"
-          title="Inner London"
-          score={
-            site.sv5_inner_london_score
-          }
-          explanation="Recognises the additional strategic context associated with constrained Inner London provision."
-        />
-
-        <FactorCard
-          code="SV6"
-          title="Deprivation"
-          score={
-            site.sv6_deprivation_score
-          }
-          explanation="Reflects the deprivation context associated with the site."
-        />
-      </div>
-
-      {site.sv4_review_note && (
-        <section style={sectionStyle}>
-          <div style={sectionEyebrowStyle}>
-            SV4 evidence note
-          </div>
-
-          <p style={bodyTextStyle}>
-            {site.sv4_review_note}
-          </p>
-        </section>
-      )}
-    </>
-  );
-}
-
-function RiskTab({
-  site,
-}: {
-  site: SiteDetail;
-}) {
-  return (
-    <>
-      <section style={introPanelStyle}>
-        <div>
-          <div style={sectionEyebrowStyle}>
-            Risk-led assessment
-          </div>
-
-          <h2 style={introTitleStyle}>
-            What risk signals are present?
-          </h2>
-
-          <p style={introTextStyle}>
-            Risk is assessed independently from
-            strategic value. The final priority combines
-            the two dimensions using the Phase 1.3
-            risk-led category model.
-          </p>
-        </div>
-
-        <div style={scoreHeroStyle}>
-          <div style={scoreHeroLabelStyle}>
-            Risk exposure
-          </div>
-
-          <div style={scoreHeroValueStyle}>
-            {site.risk_exposure_score ??
-              "N/A"}
-          </div>
-
-          <div style={scoreHeroBandStyle}>
-            {site.risk_band ||
-              "Not available"}
-          </div>
+          <AssessmentCriterion
+            title="Deprivation"
+            score={
+              site.sv6_deprivation_score
+            }
+            maxScore={2}
+            evidence={
+              isYes(
+                site.missing_imd_flag
+              )
+                ? "Deprivation evidence unavailable"
+                : "Index of Multiple Deprivation evidence applied"
+            }
+            description="Recognises provision serving areas with higher levels of deprivation using the Index of Multiple Deprivation."
+          />
         </div>
       </section>
-
-      <div style={factorGridStyle}>
-        <FactorCard
-          code="RF1"
-          title="Ownership exposure"
-          score={
-            site.rf1_ownership_exposure_score
-          }
-          explanation="Risk evidence associated with the site's current ownership type."
-        />
-
-        <FactorCard
-          code="RF2"
-          title="Management exposure"
-          score={
-            site.rf2_management_exposure_score
-          }
-          explanation="Risk evidence associated with the site's current management arrangement."
-        />
-
-        <FactorCard
-          code="RF3"
-          title="PPS at-risk evidence"
-          score={
-            site.rf3_pps_at_risk_score
-          }
-          explanation="Reflects relevant at-risk evidence available from Playing Pitch Strategy data."
-        />
-
-        <FactorCard
-          code="RF6"
-          title="Planning pressure"
-          score={
-            site.rf6_planning_pressure_score
-          }
-          explanation="Uses cautious site-linked planning-pressure evidence. Planning candidates alone do not automatically create an RF6 score."
-        />
-      </div>
 
       <section style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          <div>
-            <div style={sectionEyebrowStyle}>
-              RF6
-            </div>
-
-            <h2 style={sectionTitleStyle}>
-              Planning-pressure evidence
-            </h2>
-          </div>
-
-          <RiskBadge
-            value={
-              site.risk_band ||
-              "Not available"
-            }
-          />
-        </div>
-
-        <div style={metricGridStyle}>
-          <MetricCard
-            value={
-              site.planning_candidate_application_count ??
-              0
-            }
-            label="Applications identified for consideration"
-          />
-
-          <MetricCard
-            value={
-              site.confirmed_rf6_application_count ??
-              0
-            }
-            label="Confirmed RF6 applications"
-          />
-
-          <MetricCard
-            value={
-              site.nearest_planning_candidate_distance_metres !==
-              null
-                ? `${site.nearest_planning_candidate_distance_metres} m`
-                : "N/A"
-            }
-            label="Nearest candidate"
-          />
-
-          <MetricCard
-            value={
-              site.rf6_planning_pressure_score ??
-              0
-            }
-            label="RF6 score"
-          />
-        </div>
-
-        <PlanningInterpretation
-          site={site}
+        <SectionHeading
+          eyebrow="Interpretation"
+          title="What the Strategic Value band means"
+          description="The score reflects the site's strategic role within the current evidence base. It does not, by itself, indicate that the site is currently at risk."
         />
 
-        {site.rf6_scoring_status && (
-          <div style={evidenceBoxStyle}>
-            <div style={evidenceLabelStyle}>
-              RF6 assessment status
-            </div>
+        <div style={bandGuideGridStyle}>
+          <BandGuide
+            title="High"
+            score="9–15"
+          />
 
-            <div style={evidenceValueStyle}>
-              {site.rf6_scoring_status}
-            </div>
+          <BandGuide
+            title="Medium"
+            score="5–8"
+          />
 
-            {site.rf6_scoring_note && (
-              <div style={evidenceNoteStyle}>
-                {site.rf6_scoring_note}
-              </div>
-            )}
-          </div>
-        )}
+          <BandGuide
+            title="Low"
+            score="1–4"
+          />
+
+          <BandGuide
+            title="Not flagged"
+            score="0"
+          />
+        </div>
       </section>
+
+      <MethodologyCallout />
     </>
   );
 }
@@ -870,430 +1233,316 @@ function FacilitiesTab({
 }: {
   site: SiteDetail;
 }) {
-  const totalRecordedProvision =
-    numberValue(
-      site.adult_football_rugby_pitch_units
-    ) +
-    numberValue(site.rugby_pitch_units) +
-    numberValue(site.cricket_pitch_units) +
-    numberValue(
-      site.other_strategic_grass_pitch_units
-    ) +
-    numberValue(
-      site.full_size_3g_pitch_units
-    ) +
-    numberValue(
-      site.hockey_agp_pitch_units
-    );
+  const facilityRows =
+    [
+      {
+        label:
+          "Adult football / rugby pitch units",
+        value:
+          site.adult_football_rugby_pitch_units,
+      },
+      {
+        label:
+          "Rugby pitch units",
+        value:
+          site.rugby_pitch_units,
+      },
+      {
+        label:
+          "Cricket pitch units",
+        value:
+          site.cricket_pitch_units,
+      },
+      {
+        label:
+          "Other strategic grass pitch units",
+        value:
+          site.other_strategic_grass_pitch_units,
+      },
+      {
+        label:
+          "Full-size 3G pitch units",
+        value:
+          site.full_size_3g_pitch_units,
+      },
+      {
+        label:
+          "Hockey artificial grass pitch units",
+        value:
+          site.hockey_agp_pitch_units,
+      },
+    ];
 
   return (
     <>
-      <section style={introPanelStyle}>
-        <div>
-          <div style={sectionEyebrowStyle}>
-            Playing field provision
-          </div>
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Facility evidence"
+          title="Playing-field provision recorded for this site"
+          description="Facility evidence supports the Strategic Value assessment. These values should be interpreted as the provision currently represented in the governed assessment data."
+        />
 
-          <h2 style={introTitleStyle}>
-            What provision is recorded at this
-            site?
-          </h2>
-
-          <p style={introTextStyle}>
-            The figures below show the provision
-            used by the current strategic assessment.
-            They are assessment inputs rather than a
-            replacement for detailed facility or PPS
-            records.
-          </p>
-        </div>
-
-        <div style={scoreHeroStyle}>
-          <div style={scoreHeroLabelStyle}>
-            Recorded units
-          </div>
-
-          <div style={scoreHeroValueStyle}>
-            {totalRecordedProvision}
-          </div>
-
-          <div style={scoreHeroBandStyle}>
-            Assessment provision
-          </div>
+        <div style={facilityGridStyle}>
+          {facilityRows.map(
+            (
+              row
+            ) => (
+              <FacilityCard
+                key={
+                  row.label
+                }
+                label={
+                  row.label
+                }
+                value={
+                  row.value
+                }
+              />
+            )
+          )}
         </div>
       </section>
 
-      <div style={facilityGridStyle}>
-        <FacilityCard
-          value={
-            site.adult_football_rugby_pitch_units ??
-            0
-          }
-          label="Adult football / rugby pitch units"
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Site context"
+          title="Current site information"
+          description="Core site attributes used to describe the assessed playing field."
         />
 
-        <FacilityCard
-          value={
-            site.rugby_pitch_units ?? 0
-          }
-          label="Rugby pitch units"
-        />
-
-        <FacilityCard
-          value={
-            site.cricket_pitch_units ?? 0
-          }
-          label="Cricket pitch units"
-        />
-
-        <FacilityCard
-          value={
-            site.other_strategic_grass_pitch_units ??
-            0
-          }
-          label="Other strategic grass pitch units"
-        />
-
-        <FacilityCard
-          value={
-            site.full_size_3g_pitch_units ??
-            0
-          }
-          label="Full-size 3G pitch units"
-        />
-
-        <FacilityCard
-          value={
-            site.hockey_agp_pitch_units ?? 0
-          }
-          label="Hockey AGP pitch units"
-        />
-      </div>
-
-      <div style={twoColumnGridStyle}>
-        <SectionCard
-          eyebrow="Current evidence"
-          title="Ownership & management"
-        >
-          <InfoRow
-            label="Owner type"
-            value={cleanValue(
-              site.owner_type
-            )}
-          />
-
-          <InfoRow
-            label="Management type"
-            value={cleanValue(
-              site.management_type
-            )}
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="PPS evidence"
-          title="Recorded context"
-        >
-          <InfoRow
-            label="Ownership"
+        <div style={summaryInfoGridStyle}>
+          <InfoCard
+            title="Playing-field status"
             value={
-              site.pps_ownership_type
+              site.playing_field_status ||
+              "Not recorded"
             }
+            text="Current status represented in the assessment."
           />
 
-          <InfoRow
-            label="Management"
+          <InfoCard
+            title="Owner"
             value={
-              site.pps_management_type
+              site.owner_type ||
+              "Not recorded"
             }
+            text="Current ownership classification."
           />
 
-          <InfoRow
-            label="Security of tenure"
+          <InfoCard
+            title="Management"
             value={
-              site.pps_security_of_tenure
+              site.management_type ||
+              "Not recorded"
             }
+            text="Current management classification."
           />
 
-          <InfoRow
-            label="Community use"
+          <InfoCard
+            title="Borough"
             value={
-              site.pps_community_use_flag
+              site.borough ||
+              "Not recorded"
             }
+            text="London borough used for borough-level context and provision comparisons."
           />
-        </SectionCard>
-      </div>
+        </div>
+      </section>
     </>
   );
 }
 
 function EvidenceTab({
   site,
+  qualityIssues,
 }: {
   site: SiteDetail;
+  qualityIssues: {
+    title: string;
+    text: string;
+  }[];
 }) {
-  const possible3GIssue =
-    site.possible_3g_data_quality_flag === 1 ||
-    site.possible_3g_data_quality_flag === "1";
-
   return (
     <>
-      <section style={introPanelStyle}>
-        <div>
-          <div style={sectionEyebrowStyle}>
-            Evidence governance
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Evidence quality"
+          title="What should be interpreted with additional care"
+          description="Missing, conflicting or uncertain evidence is surfaced rather than silently treated as confirmed information."
+        />
+
+        {qualityIssues.length >
+        0 ? (
+          <div style={issueGridStyle}>
+            {qualityIssues.map(
+              (
+                issue
+              ) => (
+                <IssueCard
+                  key={
+                    `${issue.title}-${issue.text}`
+                  }
+                  title={
+                    issue.title
+                  }
+                  text={
+                    issue.text
+                  }
+                />
+              )
+            )}
           </div>
+        ) : (
+          <div style={noIssuesStyle}>
+            <div style={noIssuesTitleStyle}>
+              No additional
+              evidence-quality flag
+              is currently shown.
+            </div>
 
-          <h2 style={introTitleStyle}>
-            How complete is the evidence?
-          </h2>
-
-          <p style={introTextStyle}>
-            This section makes review flags and
-            evidence limitations visible so the
-            assessment is not presented with false
-            certainty.
-          </p>
-        </div>
+            <div style={noIssuesTextStyle}>
+              This does not mean the
+              underlying source data
+              is complete in every
+              respect; it means no
+              additional site-level
+              review flag is
+              currently exposed
+              through this assessment.
+            </div>
+          </div>
+        )}
       </section>
-
-      <div style={twoColumnGridStyle}>
-        <SectionCard
-          eyebrow="Data quality"
-          title="Completeness checks"
-        >
-          <QualityRow
-            label="Missing IMD"
-            value={site.missing_imd_flag}
-          />
-
-          <QualityRow
-            label="Missing owner"
-            value={site.missing_owner_flag}
-          />
-
-          <QualityRow
-            label="Missing management"
-            value={
-              site.missing_management_flag
-            }
-          />
-
-          <QualityRow
-            label="Possible 3G data-quality issue"
-            value={
-              possible3GIssue
-                ? "Yes"
-                : "No"
-            }
-          />
-
-          <QualityRow
-            label="SV4 single recorded provision"
-            value={
-              site.sv4_single_recorded_provision_flag
-            }
-          />
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="Review"
-          title="Assessment review"
-        >
-          <InfoRow
-            label="Review reason"
-            value={
-              site.review_reason?.trim()
-                ? site.review_reason
-                : "No review reason recorded"
-            }
-          />
-
-          <InfoRow
-            label="Assessment scope"
-            value={
-              site.phase1_3_scope_tag
-            }
-          />
-        </SectionCard>
-      </div>
 
       <section style={sectionStyle}>
-        <div style={sectionEyebrowStyle}>
-          Assessment context
+        <SectionHeading
+          eyebrow="Evidence sources"
+          title="Evidence represented in this assessment"
+          description="The site assessment combines current site and facility information with available PPS, planning, deprivation and borough-level context."
+        />
+
+        <div style={evidenceSourceGridStyle}>
+          <EvidenceSource
+            title="Active Places"
+            text="Core site, facility, ownership and management evidence."
+          />
+
+          <EvidenceSource
+            title="Playing Pitch Strategies"
+            text="Protection, tenure, community-use and contextual evidence where a link is available."
+          />
+
+          <EvidenceSource
+            title="Planning evidence"
+            text="Site-linked planning evidence used either for assessment or manual review."
+          />
+
+          <EvidenceSource
+            title="Deprivation"
+            text="Index of Multiple Deprivation evidence used within Strategic Value."
+          />
+
+          <EvidenceSource
+            title="Borough context"
+            text="Provision comparisons used to understand the site's share of equivalent borough provision."
+          />
+
+          <EvidenceSource
+            title="Manual review"
+            text="Flags retained where evidence requires additional checking or interpretation."
+          />
         </div>
-
-        {site.phase1_3_source_note && (
-          <div style={contextBlockStyle}>
-            <h3 style={contextTitleStyle}>
-              Source context
-            </h3>
-
-            <p style={bodyTextStyle}>
-              {site.phase1_3_source_note}
-            </p>
-          </div>
-        )}
-
-        {site.phase1_3_methodology_note && (
-          <div style={contextBlockStyle}>
-            <h3 style={contextTitleStyle}>
-              Methodology
-            </h3>
-
-            <p style={bodyTextStyle}>
-              {site.phase1_3_methodology_note}
-            </p>
-          </div>
-        )}
-
-        {site.sv4_review_note && (
-          <div style={contextBlockStyle}>
-            <h3 style={contextTitleStyle}>
-              SV4 review note
-            </h3>
-
-            <p style={bodyTextStyle}>
-              {site.sv4_review_note}
-            </p>
-          </div>
-        )}
       </section>
+
+      <section style={sectionStyle}>
+        <SectionHeading
+          eyebrow="Site identifiers"
+          title="Reference information"
+          description="Reference details can help partners reconcile this assessment with other systems and datasets."
+        />
+
+        <div style={referenceGridStyle}>
+          <ReferenceItem
+            label="Site ID"
+            value={
+              String(
+                site.site_id ||
+                  "Not recorded"
+              )
+            }
+          />
+
+          <ReferenceItem
+            label="Postcode"
+            value={
+              site.postcode ||
+              "Not recorded"
+            }
+          />
+
+          <ReferenceItem
+            label="Borough"
+            value={
+              site.borough ||
+              "Not recorded"
+            }
+          />
+
+          <ReferenceItem
+            label="Coordinates"
+            value={
+              site.latitude !==
+                null &&
+              site.longitude !==
+                null
+                ? `${site.latitude}, ${site.longitude}`
+                : "Not recorded"
+            }
+          />
+        </div>
+      </section>
+
+      <MethodologyCallout />
     </>
   );
 }
 
-function PlanningInterpretation({
-  site,
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
 }: {
-  site: SiteDetail;
+  eyebrow: string;
+  title: string;
+  description: string;
 }) {
-  const candidates =
-    site.planning_candidate_application_count ??
-    0;
-
-  const confirmed =
-    site.confirmed_rf6_application_count ??
-    0;
-
-  const rf6 =
-    site.rf6_planning_pressure_score ?? 0;
-
-  if (rf6 > 0) {
-    return (
-      <div style={planningAppliedStyle}>
-        <div style={planningTitleStyle}>
-          Planning pressure contributes to
-          the RF6 assessment
-        </div>
-
-        <div style={planningTextStyle}>
-          {confirmed > 0
-            ? `${confirmed} application${
-                confirmed === 1 ? "" : "s"
-              } met the cautious RF6 evidence threshold. `
-            : ""}
-          The current RF6 planning-pressure
-          score is {rf6}.
-        </div>
-      </div>
-    );
-  }
-
-  if (candidates > 0) {
-    return (
-      <div style={planningReviewStyle}>
-        <div style={planningTitleStyle}>
-          Planning evidence identified for
-          review
-        </div>
-
-        <div style={planningTextStyle}>
-          {candidates} planning{" "}
-          {candidates === 1
-            ? "candidate has"
-            : "candidates have"}{" "}
-          been identified, but this evidence
-          does not currently produce an RF6
-          planning-pressure score.
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={planningNeutralStyle}>
-      <div style={planningTitleStyle}>
-        No current planning-pressure signal
+    <div style={sectionHeadingStyle}>
+      <div>
+        <div style={eyebrowStyle}>
+          {eyebrow}
+        </div>
+
+        <h2 style={sectionTitleStyle}>
+          {title}
+        </h2>
       </div>
 
-      <div style={planningTextStyle}>
-        No planning candidates are currently
-        identified within the Phase 1.3
-        evidence for this site.
-      </div>
+      <p style={sectionDescriptionStyle}>
+        {description}
+      </p>
     </div>
-  );
-}
-
-function ProvisionSummary({
-  site,
-}: {
-  site: SiteDetail;
-}) {
-  return (
-    <>
-      <InfoRow
-        label="Adult football / rugby"
-        value={
-          site.adult_football_rugby_pitch_units
-        }
-      />
-
-      <InfoRow
-        label="Rugby"
-        value={site.rugby_pitch_units}
-      />
-
-      <InfoRow
-        label="Cricket"
-        value={site.cricket_pitch_units}
-      />
-
-      <InfoRow
-        label="Other strategic grass"
-        value={
-          site.other_strategic_grass_pitch_units
-        }
-      />
-
-      <InfoRow
-        label="Full-size 3G"
-        value={
-          site.full_size_3g_pitch_units
-        }
-      />
-
-      <InfoRow
-        label="Hockey AGP"
-        value={
-          site.hockey_agp_pitch_units
-        }
-      />
-    </>
   );
 }
 
 function HeroMetric({
   label,
   value,
-  detail,
-  type,
+  supporting,
 }: {
   label: string;
   value: string;
-  detail?: string;
-  type?: "risk";
+  supporting?: string;
 }) {
   return (
     <div style={heroMetricStyle}>
@@ -1302,264 +1551,276 @@ function HeroMetric({
       </div>
 
       <div style={heroMetricValueStyle}>
-        {type === "risk" ? (
-          <RiskBadge value={value} />
-        ) : (
-          value
-        )}
+        {value}
       </div>
 
-      {detail && (
-        <div style={heroMetricDetailStyle}>
-          {detail}
+      {supporting && (
+        <div style={heroMetricSupportingStyle}>
+          {supporting}
         </div>
       )}
     </div>
   );
 }
 
-function SectionCard({
-  eyebrow,
-  title,
+function TabButton({
+  active,
+  onClick,
   children,
 }: {
-  eyebrow: string;
-  title: string;
+  active: boolean;
+  onClick: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <section style={sectionStyle}>
-      <div style={sectionEyebrowStyle}>
-        {eyebrow}
-      </div>
-
-      <h2 style={sectionTitleStyle}>
-        {title}
-      </h2>
-
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...tabButtonStyle,
+        ...(active
+          ? activeTabStyle
+          : {}),
+      }}
+    >
       {children}
-    </section>
+    </button>
   );
 }
 
-function InfoRow({
+function InfoCard({
+  title,
+  value,
+  text,
+}: {
+  title: string;
+  value: string;
+  text: string;
+}) {
+  return (
+    <article style={infoCardStyle}>
+      <div style={infoCardLabelStyle}>
+        {title}
+      </div>
+
+      <div style={infoCardValueStyle}>
+        {value}
+      </div>
+
+      <div style={infoCardTextStyle}>
+        {text}
+      </div>
+    </article>
+  );
+}
+
+function AssessmentCriterion({
+  title,
+  score,
+  maxScore,
+  evidence,
+  description,
+}: {
+  title: string;
+  score: number | null;
+  maxScore: number;
+  evidence: string;
+  description: string;
+}) {
+  return (
+    <article style={criterionCardStyle}>
+      <div style={criterionTopStyle}>
+        <h3 style={criterionTitleStyle}>
+          {title}
+        </h3>
+
+        <span style={criterionScoreStyle}>
+          {score ?? "—"} /{" "}
+          {maxScore}
+        </span>
+      </div>
+
+      <div style={criterionEvidenceStyle}>
+        {evidence}
+      </div>
+
+      <p style={criterionDescriptionStyle}>
+        {description}
+      </p>
+    </article>
+  );
+}
+
+function MetricBox({
   label,
   value,
 }: {
   label: string;
   value:
     | string
-    | number
-    | null
-    | undefined;
-}) {
-  const display =
-    value === null ||
-    value === undefined ||
-    value === ""
-      ? "Not available"
-      : value;
-
-  return (
-    <div style={infoRowStyle}>
-      <div style={infoLabelStyle}>
-        {label}
-      </div>
-
-      <div style={infoValueStyle}>
-        {display}
-      </div>
-    </div>
-  );
-}
-
-function SignalRow({
-  label,
-  code,
-  score,
-}: {
-  label: string;
-  code: string;
-  score: number | null;
+    | number;
 }) {
   return (
-    <div style={signalRowStyle}>
-      <div>
-        <div style={signalLabelStyle}>
-          {label}
-        </div>
-
-        <div style={signalCodeStyle}>
-          {code}
-        </div>
-      </div>
-
-      <div style={signalScoreStyle}>
-        {score ?? 0}
-      </div>
-    </div>
-  );
-}
-
-function QualityRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
-  const issue =
-    value?.toLowerCase() === "yes";
-
-  return (
-    <div style={infoRowStyle}>
-      <div style={infoLabelStyle}>
-        {label}
-      </div>
-
-      <span
-        style={{
-          ...qualityBadgeStyle,
-          ...(issue
-            ? qualityIssueStyle
-            : qualityGoodStyle),
-        }}
-      >
-        {value || "Not available"}
-      </span>
-    </div>
-  );
-}
-
-function MetricCard({
-  value,
-  label,
-}: {
-  value: string | number;
-  label: string;
-}) {
-  return (
-    <div style={metricCardStyle}>
-      <div style={metricValueStyle}>
-        {value}
-      </div>
-
+    <div style={metricBoxStyle}>
       <div style={metricLabelStyle}>
         {label}
       </div>
+
+      <div style={metricValueStyle}>
+        {value}
+      </div>
     </div>
   );
 }
 
-function FactorCard({
-  code,
+function BandGuide({
   title,
   score,
-  explanation,
 }: {
-  code: string;
   title: string;
-  score: number | null;
-  explanation: string;
+  score: string;
 }) {
   return (
-    <div style={factorCardStyle}>
-      <div style={factorTopStyle}>
-        <span style={codeBadgeStyle}>
-          {code}
-        </span>
-
-        <span style={factorScoreStyle}>
-          {score ?? 0}
-        </span>
+    <div style={bandGuideStyle}>
+      <div style={bandGuideTitleStyle}>
+        {title}
       </div>
 
-      <h3 style={factorTitleStyle}>
-        {title}
-      </h3>
-
-      <p style={factorTextStyle}>
-        {explanation}
-      </p>
+      <div style={bandGuideScoreStyle}>
+        Score {score}
+      </div>
     </div>
   );
 }
 
 function FacilityCard({
-  value,
   label,
+  value,
 }: {
-  value: number;
   label: string;
+  value: number | null;
 }) {
   return (
-    <div style={facilityCardStyle}>
+    <article style={facilityCardStyle}>
       <div style={facilityValueStyle}>
-        {value}
+        {formatNumberValue(
+          value
+        )}
       </div>
 
       <div style={facilityLabelStyle}>
         {label}
       </div>
+    </article>
+  );
+}
+
+function IssueCard({
+  title,
+  text,
+}: {
+  title: string;
+  text: string;
+}) {
+  return (
+    <article style={issueCardStyle}>
+      <div style={issueEyebrowStyle}>
+        Review
+      </div>
+
+      <div style={issueTitleStyle}>
+        {title}
+      </div>
+
+      <div style={issueTextStyle}>
+        {text}
+      </div>
+    </article>
+  );
+}
+
+function EvidenceSource({
+  title,
+  text,
+}: {
+  title: string;
+  text: string;
+}) {
+  return (
+    <article style={evidenceSourceStyle}>
+      <div style={evidenceAccentStyle} />
+
+      <div style={evidenceSourceTitleStyle}>
+        {title}
+      </div>
+
+      <div style={evidenceSourceTextStyle}>
+        {text}
+      </div>
+    </article>
+  );
+}
+
+function ReferenceItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div style={referenceItemStyle}>
+      <div style={referenceLabelStyle}>
+        {label}
+      </div>
+
+      <div style={referenceValueStyle}>
+        {value}
+      </div>
     </div>
   );
 }
 
-function PriorityBadge({
-  value,
-  large = false,
-}: {
-  value: string;
-  large?: boolean;
-}) {
+function MethodologyCallout() {
   return (
-    <span
-      style={{
-        ...badgeBaseStyle,
-        ...(large
-          ? largePriorityStyle
-          : {}),
-        ...getPriorityStyle(value),
-      }}
-    >
-      {value}
-    </span>
+    <section style={methodologyCalloutStyle}>
+      <div>
+        <div style={methodologyEyebrowStyle}>
+          Methodology
+        </div>
+
+        <div style={methodologyTitleStyle}>
+          Want to understand how
+          these scores and outcomes
+          are produced?
+        </div>
+      </div>
+
+      <Link
+        href="/about#assessment"
+        style={methodologyButtonStyle}
+      >
+        How this assessment works →
+      </Link>
+    </section>
   );
 }
 
-function RiskBadge({
-  value,
-}: {
-  value: string;
-}) {
-  return (
-    <span
-      style={{
-        ...badgeBaseStyle,
-        ...getRiskStyle(value),
-      }}
-    >
-      {value}
-    </span>
-  );
-}
+type PlanningState = {
+  shortLabel: string;
+  label: string;
+  description: string;
+  supporting?: string;
+  background: string;
+  border: string;
+  badge: string;
+  text: string;
+};
 
-function getWhyThisSiteMatters(
+function getPlanningState(
   site: SiteDetail
-) {
-  const priority =
-    site.priority_category ||
-    "the current assessment";
-
-  const strategic =
-    site.strategic_value_band ||
-    "unclassified";
-
-  const risk =
-    site.risk_band ||
-    "unclassified";
-
-  const rf6 =
+): PlanningState {
+  const planningScore =
     site.rf6_planning_pressure_score ??
     0;
 
@@ -1567,709 +1828,978 @@ function getWhyThisSiteMatters(
     site.confirmed_rf6_application_count ??
     0;
 
-  if (rf6 > 0 && confirmed > 0) {
-    return `${formatSiteName(
-      site.site_name
-    )} is classified as ${priority}, with ${strategic.toLowerCase()} strategic value and ${risk.toLowerCase()} current risk. Planning-pressure evidence is contributing to the RF6 assessment: ${confirmed} application${
-      confirmed === 1 ? "" : "s"
-    } met the cautious RF6 evidence threshold, producing an RF6 score of ${rf6}.`;
-  }
+  const candidates =
+    site.planning_candidate_application_count ??
+    0;
 
-  if (rf6 > 0) {
-    return `${formatSiteName(
-      site.site_name
-    )} is classified as ${priority}, with ${strategic.toLowerCase()} strategic value and ${risk.toLowerCase()} current risk. The current assessment includes an RF6 planning-pressure score of ${rf6}.`;
+  if (
+    planningScore > 0 ||
+    confirmed > 0
+  ) {
+    return {
+      shortLabel:
+        "Contributes",
+      label:
+        "Planning evidence contributes to the Planning Pressure assessment",
+      description:
+        "Sufficiently strong site-linked planning evidence has met the governed assessment rules and contributes directly to this site's Risk Exposure.",
+      supporting:
+        confirmed > 0
+          ? `${confirmed} ${
+              confirmed === 1
+                ? "evidence record"
+                : "evidence records"
+            } contributing`
+          : undefined,
+      background:
+        "#f9ecec",
+      border:
+        "#edcccc",
+      badge:
+        "#f3d8da",
+      text:
+        "#812329",
+    };
   }
 
   if (
-    (site.planning_candidate_application_count ??
-      0) > 0
+    candidates > 0 ||
+    site.planning_review_required ===
+      "Yes"
   ) {
-    return `${formatSiteName(
-      site.site_name
-    )} is classified as ${priority}, with ${strategic.toLowerCase()} strategic value and ${risk.toLowerCase()} current risk. Planning evidence has been identified for review, but it does not currently generate an RF6 planning-pressure score.`;
+    return {
+      shortLabel:
+        "Review only",
+      label:
+        "Planning evidence retained for review",
+      description:
+        "Planning evidence has been identified for this site, but it does not currently meet the rules required to contribute directly to the Planning Pressure assessment.",
+      supporting:
+        candidates > 0
+          ? `${candidates} ${
+              candidates === 1
+                ? "evidence record"
+                : "evidence records"
+            } identified`
+          : undefined,
+      background:
+        "#fff8e3",
+      border:
+        "#eadfb7",
+      badge:
+        "#f5ecc8",
+      text:
+        "#6b591a",
+    };
   }
 
-  return `${formatSiteName(
-    site.site_name
-  )} is classified as ${priority}, with ${strategic.toLowerCase()} strategic value and ${risk.toLowerCase()} current risk. Its current classification is based on the wider strategic-value and risk evidence available within the Phase 1.3 assessment.`;
+  return {
+    shortLabel:
+      "None identified",
+    label:
+      "No current planning evidence identified",
+    description:
+      "No planning evidence currently contributes to, or is retained for review within, the Planning Pressure assessment for this site.",
+    background:
+      "#f4f2ef",
+    border:
+      "#dfdbd6",
+    badge:
+      "#e9e6e2",
+    text:
+      "#555555",
+  };
 }
 
-function getSummaryHeadline(
+function getKnownRiskEvidence(
   site: SiteDetail
 ) {
-  switch (site.priority_category) {
+  if (
+    (site.rf3_pps_at_risk_score ??
+      0) > 0
+  ) {
+    return "Known at-risk protection evidence recorded";
+  }
+
+  if (
+    site.pps_critical_site_flag
+  ) {
+    return `PPS evidence: ${site.pps_critical_site_flag}`;
+  }
+
+  return "No scored known at-risk evidence";
+}
+
+function getMultiPitchEvidence(
+  site: SiteDetail
+) {
+  const count =
+    site.adult_football_rugby_pitch_units ??
+    0;
+
+  return `${formatNumberValue(
+    count
+  )} adult / senior football or rugby pitch ${
+    count === 1
+      ? "unit"
+      : "units"
+  }`;
+}
+
+function getStrategicSportEvidence(
+  site: SiteDetail
+) {
+  const parts: string[] =
+    [];
+
+  if (
+    (site.rugby_pitch_units ??
+      0) > 0
+  ) {
+    parts.push(
+      `${site.rugby_pitch_units} rugby`
+    );
+  }
+
+  if (
+    (site.cricket_pitch_units ??
+      0) > 0
+  ) {
+    parts.push(
+      `${site.cricket_pitch_units} cricket`
+    );
+  }
+
+  if (
+    (site.hockey_agp_pitch_units ??
+      0) > 0
+  ) {
+    parts.push(
+      `${site.hockey_agp_pitch_units} hockey`
+    );
+  }
+
+  if (
+    (site.other_strategic_grass_pitch_units ??
+      0) > 0
+  ) {
+    parts.push(
+      `${site.other_strategic_grass_pitch_units} other strategic grass`
+    );
+  }
+
+  return parts.length >
+    0
+    ? parts.join(" · ")
+    : "No strategic sport provision recorded";
+}
+
+function getOutcomeDescription(
+  priority:
+    | string
+    | null
+) {
+  switch (
+    priority
+  ) {
     case "Priority A":
-      return "Highest current strategic attention";
+      return "High current escalation category where high Risk Exposure combines with high or medium Strategic Value.";
 
     case "Priority B":
-      return "Significant risk requiring active attention";
+      return "High Risk Exposure with lower current Strategic Value.";
 
     case "Priority C":
-      return "Strategically important with relevant risk exposure";
-
-    case "Strategic Monitor":
-      return "Strategically important and retained under observation";
+      return "Medium Risk Exposure combined with high or medium Strategic Value.";
 
     case "Risk Review":
-      return "Risk evidence warrants further review";
+      return "Medium Risk Exposure where the available evidence warrants review rather than an active Priority A–C outcome.";
+
+    case "Strategic Monitor":
+      return "High Strategic Value with low or no current risk signal.";
 
     case "Monitor":
-      return "Retained within the monitoring population";
+      return "Retained in the assessed population without a current escalation outcome.";
 
     default:
-      return "Current site assessment";
+      return "The current outcome is determined by combining the Risk Exposure and Strategic Value bands.";
   }
 }
 
-function formatSiteName(
-  value: string
+function formatDistance(
+  value:
+    | number
+    | null
 ) {
-  if (!value) {
-    return value;
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "Not recorded";
   }
 
-  return value
-    .toLowerCase()
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase()
-    );
+  if (
+    value < 1000
+  ) {
+    return `${Math.round(
+      value
+    )} m`;
+  }
+
+  return `${(
+    value / 1000
+  ).toFixed(1)} km`;
 }
 
-function cleanValue(
-  value: string | null
+function formatNumberValue(
+  value:
+    | number
+    | null
 ) {
-  return value?.trim() || null;
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "0";
+  }
+
+  return Number(
+    value
+  ).toLocaleString(
+    "en-GB"
+  );
 }
 
-function numberValue(
-  value: number | null
+function isYes(
+  value:
+    | string
+    | null
 ) {
-  return value ?? 0;
+  return (
+    value
+      ?.trim()
+      .toLowerCase() ===
+    "yes"
+  );
 }
 
-function getPriorityStyle(
-  value: string
-): React.CSSProperties {
-  switch (value) {
-    case "Priority A":
-      return {
-        background: "#242424",
-        color: "#fff",
-      };
-
-    case "Priority B":
-      return {
-        background: "#b96800",
-        color: "#fff",
-      };
-
-    case "Priority C":
-      return {
-        background: "#f2d7a7",
-        color: "#5f3900",
-      };
-
-    case "Strategic Monitor":
-      return {
-        background: "#dfe9f7",
-        color: "#174f8a",
-      };
-
-    case "Risk Review":
-      return {
-        background: "#eee4f4",
-        color: "#674080",
-      };
-
-    default:
-      return {
-        background: "#ebe9e6",
-        color: "#555",
-      };
+function normaliseSiteResponse(
+  raw: SiteApiResponse
+): SiteDetail | null {
+  if (
+    !raw ||
+    typeof raw !==
+      "object"
+  ) {
+    return null;
   }
-}
 
-function getRiskStyle(
-  value: string
-): React.CSSProperties {
-  switch (value) {
-    case "High":
-      return {
-        background: "#ffe5cf",
-        color: "#803600",
-      };
-
-    case "Medium":
-      return {
-        background: "#fff2c7",
-        color: "#665100",
-      };
-
-    case "No current risk signal":
-      return {
-        background: "#e7efea",
-        color: "#365746",
-      };
-
-    default:
-      return {
-        background: "#eeeeee",
-        color: "#555",
-      };
+  if (
+    "site" in raw &&
+    raw.site
+  ) {
+    return raw.site;
   }
+
+  if (
+    "data" in raw &&
+    raw.data
+  ) {
+    return raw.data;
+  }
+
+  if (
+    "site_id" in raw
+  ) {
+    return raw as SiteDetail;
+  }
+
+  return null;
 }
 
-const pageStyle: React.CSSProperties = {
-  maxWidth: "1380px",
+const pageStyle: CSSProperties = {
+  maxWidth: "1440px",
   margin: "0 auto",
-  padding: "34px 28px 80px",
+  padding: "28px 28px 80px",
 };
 
-const loadingStyle: React.CSSProperties = {
-  padding: "70px 0",
-  color: "#666",
+const loadingCardStyle: CSSProperties = {
+  marginTop: "30px",
+  padding: "30px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "16px",
 };
 
-const backRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: "20px",
-};
-
-const backLinkStyle: React.CSSProperties = {
-  color: "#333",
-  textDecoration: "none",
-  fontSize: "13px",
-  fontWeight: 800,
-};
-
-const siteIdStyle: React.CSSProperties = {
-  fontSize: "11px",
-  color: "#888",
-  fontWeight: 700,
-};
-
-const heroStyle: React.CSSProperties = {
-  background: "#171717",
-  color: "#fff",
-  borderRadius: "22px",
-  overflow: "hidden",
-  marginBottom: "24px",
-  boxShadow:
-    "0 18px 50px rgba(20,20,20,0.12)",
-};
-
-const heroTopStyle: React.CSSProperties = {
-  padding: "38px 42px 34px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "35px",
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  color: "#ef5358",
-  textTransform: "uppercase",
-  letterSpacing: "0.09em",
-  fontWeight: 850,
-  fontSize: "11px",
-  marginBottom: "11px",
-};
-
-const heroTitleStyle: React.CSSProperties = {
-  fontSize: "clamp(34px, 5vw, 58px)",
-  lineHeight: 0.99,
-  letterSpacing: "-0.045em",
-  margin: 0,
-  maxWidth: "900px",
-  fontWeight: 900,
-};
-
-const locationStyle: React.CSSProperties = {
-  marginTop: "17px",
-  color: "#bbb",
-  fontSize: "15px",
-};
-
-const heroPriorityStyle: React.CSSProperties = {
-  flexShrink: 0,
-  textAlign: "right",
-};
-
-const priorityLabelStyle: React.CSSProperties = {
-  textTransform: "uppercase",
-  fontSize: "10px",
-  letterSpacing: "0.08em",
-  color: "#aaa",
-  fontWeight: 800,
-  marginBottom: "8px",
-};
-
-const heroMetricsStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(190px, 1fr))",
-  borderTop: "1px solid #383838",
-};
-
-const heroMetricStyle: React.CSSProperties = {
-  padding: "20px 24px",
-  borderRight: "1px solid #383838",
-  minHeight: "90px",
-};
-
-const heroMetricLabelStyle: React.CSSProperties = {
-  color: "#999",
-  fontSize: "10px",
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: "0.07em",
-};
-
-const heroMetricValueStyle: React.CSSProperties = {
-  marginTop: "7px",
+const loadingTitleStyle: CSSProperties = {
   fontSize: "18px",
   fontWeight: 850,
 };
 
-const heroMetricDetailStyle: React.CSSProperties = {
-  color: "#aaa",
-  fontSize: "11px",
-  marginTop: "5px",
+const loadingTextStyle: CSSProperties = {
+  marginTop: "6px",
+  color: "#737373",
+  fontSize: "12px",
 };
 
-const workspaceStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e1ddd8",
-  borderRadius: "20px",
-  overflow: "hidden",
-  boxShadow:
-    "0 10px 35px rgba(20,20,20,0.04)",
+const errorStyle: CSSProperties = {
+  marginTop: "30px",
+  padding: "22px",
+  background: "#fff0f0",
+  border: "1px solid #efb9bd",
+  borderRadius: "14px",
+  color: "#7b2026",
 };
 
-const tabScrollStyle: React.CSSProperties = {
-  overflowX: "auto",
-  borderBottom: "1px solid #e7e3de",
-  background: "#faf9f7",
-};
-
-const tabsStyle: React.CSSProperties = {
-  display: "flex",
-  padding: "0 24px",
-  minWidth: "max-content",
-};
-
-const tabStyle: React.CSSProperties = {
-  background: "transparent",
-  border: 0,
-  borderBottom:
-    "3px solid transparent",
-  padding: "19px 16px 15px",
-  fontSize: "13px",
-  color: "#686868",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const activeTabStyle: React.CSSProperties = {
-  borderBottomColor: "#e21b23",
-  color: "#171717",
-};
-
-const tabContentStyle: React.CSSProperties = {
-  padding: "30px",
-};
-
-const attentionPanelStyle: React.CSSProperties = {
-  padding: "30px",
-  background: "#f6f2ee",
-  borderRadius: "16px",
-  marginBottom: "22px",
-  borderLeft: "5px solid #e21b23",
-};
-
-const attentionLabelStyle: React.CSSProperties = {
-  color: "#e21b23",
-  fontWeight: 850,
-  fontSize: "11px",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-};
-
-const attentionTitleStyle: React.CSSProperties = {
-  margin: "8px 0 10px",
-  fontSize: "28px",
-  letterSpacing: "-0.03em",
-};
-
-const attentionTextStyle: React.CSSProperties = {
-  margin: 0,
-  maxWidth: "980px",
-  color: "#4d4d4d",
-  lineHeight: 1.65,
-  fontSize: "15px",
-};
-
-const twoColumnGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(350px, 1fr))",
-  gap: "20px",
-};
-
-const sectionStyle: React.CSSProperties = {
-  border: "1px solid #e3dfda",
-  borderRadius: "15px",
-  padding: "24px",
-  marginBottom: "20px",
-  background: "#fff",
-};
-
-const sectionHeaderStyle: React.CSSProperties = {
+const topLinksStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "20px",
-  alignItems: "flex-start",
-  marginBottom: "20px",
-};
-
-const sectionEyebrowStyle: React.CSSProperties = {
-  color: "#e21b23",
-  fontSize: "10px",
-  fontWeight: 850,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  margin: "5px 0 17px",
-  fontSize: "21px",
-  letterSpacing: "-0.02em",
-};
-
-const infoRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "22px",
-  padding: "11px 0",
-  borderBottom: "1px solid #efedea",
-};
-
-const infoLabelStyle: React.CSSProperties = {
-  color: "#666",
-  fontSize: "13px",
-};
-
-const infoValueStyle: React.CSSProperties = {
-  fontWeight: 750,
-  fontSize: "13px",
-  textAlign: "right",
-};
-
-const signalRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "12px 0",
-  borderBottom: "1px solid #efedea",
-};
-
-const signalLabelStyle: React.CSSProperties = {
-  fontWeight: 750,
-  fontSize: "13px",
-};
-
-const signalCodeStyle: React.CSSProperties = {
-  color: "#888",
-  fontSize: "10px",
-  marginTop: "3px",
-};
-
-const signalScoreStyle: React.CSSProperties = {
-  width: "34px",
-  height: "34px",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  borderRadius: "50%",
-  background: "#f1efec",
-  fontWeight: 900,
-};
-
-const metricGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(190px, 1fr))",
+  flexWrap: "wrap",
   gap: "12px",
+  marginBottom: "14px",
+};
+
+const backLinkStyle: CSSProperties = {
+  color: "#171717",
+  textDecoration: "none",
+  fontSize: "10px",
+  fontWeight: 850,
+};
+
+const methodLinkStyle: CSSProperties = {
+  color: "#e21b23",
+  textDecoration: "none",
+  fontSize: "10px",
+  fontWeight: 850,
+};
+
+const heroStyle: CSSProperties = {
+  background: "#171717",
+  color: "#ffffff",
+  borderRadius: "22px",
+  padding: "34px 38px",
   marginBottom: "18px",
 };
 
-const metricCardStyle: React.CSSProperties = {
-  background: "#f7f5f2",
-  border: "1px solid #ebe7e2",
-  borderRadius: "12px",
-  padding: "18px",
-};
-
-const metricValueStyle: React.CSSProperties = {
-  fontSize: "28px",
-  fontWeight: 900,
-  letterSpacing: "-0.03em",
-};
-
-const metricLabelStyle: React.CSSProperties = {
-  color: "#6c6c6c",
-  fontSize: "11px",
-  marginTop: "6px",
-  lineHeight: 1.4,
-};
-
-const planningAppliedStyle: React.CSSProperties = {
-  background: "#fff2e8",
-  border: "1px solid #f0c7a5",
-  padding: "16px",
-  borderRadius: "11px",
-};
-
-const planningReviewStyle: React.CSSProperties = {
-  background: "#fff8db",
-  border: "1px solid #eedb8c",
-  padding: "16px",
-  borderRadius: "11px",
-};
-
-const planningNeutralStyle: React.CSSProperties = {
-  background: "#edf3ef",
-  border: "1px solid #cedcd2",
-  padding: "16px",
-  borderRadius: "11px",
-};
-
-const planningTitleStyle: React.CSSProperties = {
-  fontWeight: 850,
-  fontSize: "13px",
-};
-
-const planningTextStyle: React.CSSProperties = {
-  marginTop: "5px",
-  color: "#555",
-  fontSize: "12px",
-  lineHeight: 1.55,
-};
-
-const introPanelStyle: React.CSSProperties = {
-  background: "#f6f3ef",
-  padding: "28px",
-  borderRadius: "15px",
-  marginBottom: "22px",
+const heroTopStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "30px",
-  alignItems: "center",
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+  gap: "28px",
 };
 
-const introTitleStyle: React.CSSProperties = {
-  margin: "6px 0 8px",
-  fontSize: "27px",
-  letterSpacing: "-0.03em",
+const heroEyebrowStyle: CSSProperties = {
+  color: "#ef555b",
+  fontSize: "9px",
+  fontWeight: 900,
+  letterSpacing: "0.09em",
+  textTransform: "uppercase",
 };
 
-const introTextStyle: React.CSSProperties = {
+const heroTitleStyle: CSSProperties = {
+  maxWidth: "900px",
+  margin: "7px 0 0",
+  fontSize:
+    "clamp(31px, 4vw, 50px)",
+  lineHeight: 1.04,
+  letterSpacing: "-0.045em",
+};
+
+const heroLocationStyle: CSSProperties = {
+  marginTop: "10px",
+  color: "#bdbdbd",
+  fontSize: "11px",
+};
+
+const priorityPanelStyle: CSSProperties = {
+  minWidth: "180px",
+  padding: "14px 16px",
+  background: "#282828",
+  borderRadius: "12px",
+};
+
+const priorityLabelStyle: CSSProperties = {
+  color: "#9d9d9d",
+  fontSize: "8px",
+  fontWeight: 850,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const priorityValueStyle: CSSProperties = {
+  marginTop: "5px",
+  fontSize: "18px",
+  fontWeight: 900,
+};
+
+const heroMetricsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "10px",
+  marginTop: "27px",
+};
+
+const heroMetricStyle: CSSProperties = {
+  padding: "13px",
+  background: "#222222",
+  borderRadius: "10px",
+};
+
+const heroMetricLabelStyle: CSSProperties = {
+  color: "#9d9d9d",
+  fontSize: "8px",
+  fontWeight: 800,
+  textTransform: "uppercase",
+};
+
+const heroMetricValueStyle: CSSProperties = {
+  marginTop: "4px",
+  fontSize: "12px",
+  fontWeight: 850,
+};
+
+const heroMetricSupportingStyle: CSSProperties = {
+  marginTop: "3px",
+  color: "#bbbbbb",
+  fontSize: "8px",
+};
+
+const tabsWrapStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "7px",
+  padding: "8px",
+  marginBottom: "30px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "13px",
+};
+
+const tabButtonStyle: CSSProperties = {
+  border: 0,
+  background: "transparent",
+  color: "#555555",
+  borderRadius: "8px",
+  padding: "9px 13px",
+  cursor: "pointer",
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const activeTabStyle: CSSProperties = {
+  background: "#171717",
+  color: "#ffffff",
+};
+
+const sectionStyle: CSSProperties = {
+  marginBottom: "42px",
+};
+
+const sectionHeadingStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: "28px",
+  alignItems: "end",
+  marginBottom: "18px",
+};
+
+const eyebrowStyle: CSSProperties = {
+  color: "#e21b23",
+  fontSize: "9px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: "6px 0 0",
+  fontSize: "28px",
+  lineHeight: 1.15,
+  letterSpacing: "-0.035em",
+};
+
+const sectionDescriptionStyle: CSSProperties = {
   margin: 0,
-  maxWidth: "750px",
-  color: "#606060",
-  fontSize: "14px",
+  color: "#666666",
+  fontSize: "11px",
   lineHeight: 1.6,
 };
 
-const scoreHeroStyle: React.CSSProperties = {
-  flexShrink: 0,
-  minWidth: "145px",
-  textAlign: "center",
-  padding: "18px",
-  borderRadius: "13px",
-  background: "#fff",
-  border: "1px solid #e3dfda",
-};
-
-const scoreHeroLabelStyle: React.CSSProperties = {
-  fontSize: "9px",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#777",
-  fontWeight: 850,
-};
-
-const scoreHeroValueStyle: React.CSSProperties = {
-  fontSize: "38px",
-  fontWeight: 900,
-  marginTop: "3px",
-};
-
-const scoreHeroBandStyle: React.CSSProperties = {
-  fontSize: "12px",
-  fontWeight: 750,
-  color: "#555",
-};
-
-const factorGridStyle: React.CSSProperties = {
+const summaryAssessmentGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(270px, 1fr))",
-  gap: "16px",
-  marginBottom: "20px",
+    "minmax(220px, 1fr) auto minmax(220px, 1fr) auto minmax(220px, 1fr)",
+  gap: "12px",
+  alignItems: "stretch",
 };
 
-const factorCardStyle: React.CSSProperties = {
-  border: "1px solid #e3dfda",
-  borderRadius: "14px",
-  padding: "20px",
-  background: "#fff",
+const dimensionCardButtonStyle: CSSProperties = {
+  textAlign: "left",
+  border: "1px solid #e2ded9",
+  background: "#ffffff",
+  borderRadius: "15px",
+  padding: "19px",
+  cursor: "pointer",
 };
 
-const factorTopStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
+const dimensionEyebrowStyle: CSSProperties = {
+  color: "#e21b23",
+  fontSize: "8px",
+  fontWeight: 900,
+  textTransform: "uppercase",
 };
 
-const codeBadgeStyle: React.CSSProperties = {
-  background: "#f0ede9",
-  borderRadius: "6px",
-  padding: "5px 7px",
-  fontSize: "10px",
-  fontWeight: 850,
-};
-
-const factorScoreStyle: React.CSSProperties = {
+const dimensionValueStyle: CSSProperties = {
+  marginTop: "6px",
   fontSize: "24px",
   fontWeight: 900,
 };
 
-const factorTitleStyle: React.CSSProperties = {
-  fontSize: "16px",
-  margin: "15px 0 6px",
-};
-
-const factorTextStyle: React.CSSProperties = {
-  margin: 0,
-  color: "#666",
-  fontSize: "12px",
-  lineHeight: 1.55,
-};
-
-const facilityGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: "14px",
-  marginBottom: "22px",
-};
-
-const facilityCardStyle: React.CSSProperties = {
-  border: "1px solid #e2ded9",
-  borderRadius: "14px",
-  padding: "22px",
-  background: "#fff",
-};
-
-const facilityValueStyle: React.CSSProperties = {
-  fontSize: "34px",
-  fontWeight: 900,
-};
-
-const facilityLabelStyle: React.CSSProperties = {
-  marginTop: "7px",
-  color: "#666",
-  fontSize: "12px",
-  lineHeight: 1.45,
-};
-
-const evidenceBoxStyle: React.CSSProperties = {
-  marginTop: "18px",
-  padding: "17px",
-  borderRadius: "11px",
-  background: "#f6f4f1",
-};
-
-const evidenceLabelStyle: React.CSSProperties = {
+const dimensionScoreStyle: CSSProperties = {
+  marginTop: "3px",
+  color: "#777777",
   fontSize: "9px",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#777",
-  fontWeight: 850,
 };
 
-const evidenceValueStyle: React.CSSProperties = {
-  marginTop: "5px",
-  fontWeight: 850,
-  fontSize: "14px",
-};
-
-const evidenceNoteStyle: React.CSSProperties = {
-  color: "#666",
-  fontSize: "12px",
-  marginTop: "6px",
+const dimensionTextStyle: CSSProperties = {
+  color: "#666666",
+  fontSize: "9px",
   lineHeight: 1.5,
 };
 
-const qualityBadgeStyle: React.CSSProperties = {
+const dimensionLinkStyle: CSSProperties = {
+  marginTop: "12px",
+  color: "#171717",
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const combineSymbolStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#999999",
+  fontSize: "23px",
+  fontWeight: 900,
+};
+
+const outcomeCardStyle: CSSProperties = {
+  padding: "19px",
+  background: "#171717",
+  color: "#ffffff",
+  borderRadius: "15px",
+};
+
+const outcomeEyebrowStyle: CSSProperties = {
+  color: "#ef555b",
+  fontSize: "8px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+};
+
+const outcomeValueStyle: CSSProperties = {
+  marginTop: "6px",
+  fontSize: "24px",
+  fontWeight: 900,
+};
+
+const outcomeDescriptionStyle: CSSProperties = {
+  color: "#bdbdbd",
+  fontSize: "9px",
+  lineHeight: 1.5,
+};
+
+const summaryInfoGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: "13px",
+};
+
+const infoCardStyle: CSSProperties = {
+  padding: "17px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "13px",
+};
+
+const infoCardLabelStyle: CSSProperties = {
+  color: "#888888",
+  fontSize: "8px",
+  fontWeight: 850,
+  textTransform: "uppercase",
+};
+
+const infoCardValueStyle: CSSProperties = {
+  marginTop: "5px",
+  fontSize: "13px",
+  fontWeight: 850,
+};
+
+const infoCardTextStyle: CSSProperties = {
+  marginTop: "6px",
+  color: "#6d6d6d",
+  fontSize: "9px",
+  lineHeight: 1.5,
+};
+
+const bandSummaryStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: "18px",
+  padding: "18px",
+  marginBottom: "14px",
+  background: "#171717",
+  color: "#ffffff",
+  borderRadius: "14px",
+};
+
+const bandSummaryLabelStyle: CSSProperties = {
+  color: "#a7a7a7",
+  fontSize: "8px",
+  fontWeight: 850,
+  textTransform: "uppercase",
+};
+
+const bandSummaryValueStyle: CSSProperties = {
+  marginTop: "4px",
+  fontSize: "23px",
+  fontWeight: 900,
+};
+
+const bandSummaryNumberStyle: CSSProperties = {
+  marginTop: "4px",
+  fontSize: "23px",
+  fontWeight: 900,
+};
+
+const scoreMaxStyle: CSSProperties = {
+  color: "#8d8d8d",
+  fontSize: "12px",
+  marginLeft: "3px",
+};
+
+const criteriaGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(250px, 1fr))",
+  gap: "13px",
+};
+
+const criterionCardStyle: CSSProperties = {
+  padding: "18px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "14px",
+};
+
+const criterionTopStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "10px",
+};
+
+const criterionTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "13px",
+};
+
+const criterionScoreStyle: CSSProperties = {
+  flexShrink: 0,
+  padding: "4px 7px",
+  background: "#f0ede9",
   borderRadius: "999px",
-  padding: "5px 8px",
+  color: "#555555",
+  fontSize: "8px",
+  fontWeight: 850,
+};
+
+const criterionEvidenceStyle: CSSProperties = {
+  marginTop: "9px",
+  color: "#222222",
+  fontSize: "10px",
+  fontWeight: 800,
+};
+
+const criterionDescriptionStyle: CSSProperties = {
+  margin: "7px 0 0",
+  color: "#707070",
+  fontSize: "9px",
+  lineHeight: 1.5,
+};
+
+const planningPanelStyle: CSSProperties = {
+  border: "1px solid",
+  borderRadius: "15px",
+  padding: "19px",
+};
+
+const planningStatusTopStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+  gap: "12px",
+};
+
+const planningLabelStyle: CSSProperties = {
+  color: "#777777",
+  fontSize: "8px",
+  fontWeight: 850,
+  textTransform: "uppercase",
+};
+
+const planningStatusTitleStyle: CSSProperties = {
+  marginTop: "5px",
+  fontSize: "15px",
+  fontWeight: 850,
+};
+
+const planningBadgeStyle: CSSProperties = {
+  padding: "6px 9px",
+  borderRadius: "999px",
+  fontSize: "8px",
+  fontWeight: 850,
+};
+
+const planningDescriptionStyle: CSSProperties = {
+  maxWidth: "900px",
+  color: "#606060",
+  fontSize: "10px",
+  lineHeight: 1.55,
+};
+
+const planningMetricsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "10px",
+  marginTop: "15px",
+};
+
+const metricBoxStyle: CSSProperties = {
+  padding: "12px",
+  background: "rgba(255,255,255,0.72)",
+  borderRadius: "9px",
+};
+
+const metricLabelStyle: CSSProperties = {
+  color: "#777777",
+  fontSize: "8px",
+  fontWeight: 800,
+};
+
+const metricValueStyle: CSSProperties = {
+  marginTop: "4px",
+  fontSize: "17px",
+  fontWeight: 900,
+};
+
+const bandGuideGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(4, minmax(0, 1fr))",
+  gap: "10px",
+};
+
+const bandGuideStyle: CSSProperties = {
+  padding: "14px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "11px",
+};
+
+const bandGuideTitleStyle: CSSProperties = {
   fontSize: "10px",
   fontWeight: 850,
 };
 
-const qualityIssueStyle: React.CSSProperties = {
-  background: "#ffe4e4",
-  color: "#812222",
+const bandGuideScoreStyle: CSSProperties = {
+  marginTop: "4px",
+  color: "#777777",
+  fontSize: "8px",
 };
 
-const qualityGoodStyle: React.CSSProperties = {
-  background: "#e7f0ea",
-  color: "#365746",
+const facilityGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "13px",
 };
 
-const contextBlockStyle: React.CSSProperties = {
-  marginTop: "20px",
-  maxWidth: "950px",
+const facilityCardStyle: CSSProperties = {
+  padding: "18px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "13px",
 };
 
-const contextTitleStyle: React.CSSProperties = {
-  margin: "0 0 6px",
-  fontSize: "14px",
+const facilityValueStyle: CSSProperties = {
+  fontSize: "28px",
+  fontWeight: 900,
 };
 
-const bodyTextStyle: React.CSSProperties = {
-  color: "#606060",
-  margin: 0,
-  fontSize: "13px",
-  lineHeight: 1.65,
+const facilityLabelStyle: CSSProperties = {
+  marginTop: "5px",
+  color: "#666666",
+  fontSize: "9px",
+  lineHeight: 1.4,
 };
 
-const badgeBaseStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: "999px",
-  padding: "6px 9px",
+const issueGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(250px, 1fr))",
+  gap: "12px",
+};
+
+const issueCardStyle: CSSProperties = {
+  padding: "16px",
+  background: "#fff8e3",
+  border: "1px solid #eadfb7",
+  borderRadius: "12px",
+};
+
+const issueEyebrowStyle: CSSProperties = {
+  color: "#8b7118",
+  fontSize: "8px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+};
+
+const issueTitleStyle: CSSProperties = {
+  marginTop: "5px",
   fontSize: "11px",
   fontWeight: 850,
-  whiteSpace: "nowrap",
 };
 
-const largePriorityStyle: React.CSSProperties = {
-  fontSize: "14px",
-  padding: "10px 15px",
+const issueTextStyle: CSSProperties = {
+  marginTop: "5px",
+  color: "#675b28",
+  fontSize: "9px",
+  lineHeight: 1.5,
 };
 
-const errorStyle: React.CSSProperties = {
-  marginTop: "25px",
-  padding: "18px",
+const noIssuesStyle: CSSProperties = {
+  padding: "20px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "13px",
+};
+
+const noIssuesTitleStyle: CSSProperties = {
+  fontSize: "12px",
+  fontWeight: 850,
+};
+
+const noIssuesTextStyle: CSSProperties = {
+  maxWidth: "800px",
+  marginTop: "6px",
+  color: "#6e6e6e",
+  fontSize: "9px",
+  lineHeight: 1.55,
+};
+
+const evidenceSourceGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: "12px",
+};
+
+const evidenceSourceStyle: CSSProperties = {
+  position: "relative",
+  overflow: "hidden",
+  padding: "16px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
   borderRadius: "12px",
-  border: "1px solid #efb8bb",
-  background: "#fff0f0",
-  color: "#7d2025",
+};
+
+const evidenceAccentStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  bottom: 0,
+  width: "4px",
+  background: "#e21b23",
+};
+
+const evidenceSourceTitleStyle: CSSProperties = {
+  fontSize: "11px",
+  fontWeight: 850,
+};
+
+const evidenceSourceTextStyle: CSSProperties = {
+  marginTop: "5px",
+  color: "#6d6d6d",
+  fontSize: "9px",
+  lineHeight: 1.5,
+};
+
+const referenceGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "10px",
+};
+
+const referenceItemStyle: CSSProperties = {
+  padding: "13px",
+  background: "#f2efeb",
+  borderRadius: "10px",
+};
+
+const referenceLabelStyle: CSSProperties = {
+  color: "#777777",
+  fontSize: "8px",
+  fontWeight: 850,
+  textTransform: "uppercase",
+};
+
+const referenceValueStyle: CSSProperties = {
+  marginTop: "4px",
+  fontSize: "10px",
+  fontWeight: 800,
+};
+
+const methodologyCalloutStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: "18px",
+  padding: "22px",
+  background: "#171717",
+  color: "#ffffff",
+  borderRadius: "15px",
+  marginBottom: "42px",
+};
+
+const methodologyEyebrowStyle: CSSProperties = {
+  color: "#ef555b",
+  fontSize: "8px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+};
+
+const methodologyTitleStyle: CSSProperties = {
+  marginTop: "5px",
+  fontSize: "15px",
+  fontWeight: 850,
+};
+
+const methodologyButtonStyle: CSSProperties = {
+  padding: "10px 13px",
+  background: "#ffffff",
+  color: "#171717",
+  textDecoration: "none",
+  borderRadius: "8px",
+  fontSize: "9px",
+  fontWeight: 850,
 };
