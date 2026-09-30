@@ -4,10 +4,16 @@ import {
   useEffect,
   useState,
 } from "react";
+
+import type {
+  CSSProperties,
+} from "react";
+
 import Link from "next/link";
+
 import AppShell from "../../components/AppShell";
 
-type OverviewData = {
+type OverviewResponse = {
   assessedSites: number;
   boroughCount: number;
 
@@ -39,106 +45,182 @@ type OverviewData = {
   };
 };
 
-type OverviewResponse = {
+type ProtectionResponse = {
   success: boolean;
-  overview?: OverviewData;
-  validation?: {
-    boroughCount: number;
-    categoryTotal: number;
-    populationMatchesCategories: boolean;
+
+  counts: {
+    total: number;
+    currentAssessment: number;
+    protectionWatchlist: number;
+    manualReconciliation: number;
+    outsidePlayingFieldScope: number;
+    outsideCurrentAssessment: number;
   };
+
   error?: string;
 };
 
-type Tone =
-  | "priorityA"
-  | "priorityB"
-  | "priorityC"
-  | "strategic"
-  | "review"
-  | "monitor";
-
 export default function AboutPage() {
-  const [overview, setOverview] =
-    useState<OverviewData | null>(null);
+  const [
+    overview,
+    setOverview,
+  ] =
+    useState<OverviewResponse | null>(
+      null
+    );
 
-  const [validation, setValidation] =
-    useState<OverviewResponse["validation"]>();
+  const [
+    protection,
+    setProtection,
+  ] =
+    useState<ProtectionResponse | null>(
+      null
+    );
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
 
   useEffect(() => {
-    async function loadOverview() {
+    let cancelled = false;
+
+    async function loadData() {
       try {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(
-          "/api/overview",
-          {
-            cache: "no-store",
-          }
-        );
+        const [
+          overviewResponse,
+          protectionResponse,
+        ] =
+          await Promise.all([
+            fetch(
+              "/api/overview",
+              {
+                cache:
+                  "no-store",
+              }
+            ),
 
-        const data: OverviewResponse =
-          await response.json();
+            fetch(
+              "/api/protection",
+              {
+                cache:
+                  "no-store",
+              }
+            ),
+          ]);
 
-        if (
-          !response.ok ||
-          !data.success ||
-          !data.overview
-        ) {
+        const overviewResult =
+          await overviewResponse.json();
+
+        const protectionResult:
+          ProtectionResponse =
+          await protectionResponse.json();
+
+        if (!overviewResponse.ok) {
           throw new Error(
-            data.error ||
-              "Unable to load current assessment"
+            overviewResult?.error ||
+              "Unable to load assessment overview."
           );
         }
 
-        setOverview(data.overview);
-        setValidation(data.validation);
+        if (
+          !protectionResponse.ok ||
+          !protectionResult.success
+        ) {
+          throw new Error(
+            protectionResult.error ||
+              "Unable to load protection information."
+          );
+        }
+
+        if (!cancelled) {
+          setOverview(
+            normaliseOverview(
+              overviewResult
+            )
+          );
+
+          setProtection(
+            protectionResult
+          );
+        }
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load assessment"
-        );
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load methodology information."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadOverview();
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
     return (
       <AppShell>
         <main style={pageStyle}>
-          <div style={loadingStyle}>
-            Loading current assessment...
+          <div style={loadingCardStyle}>
+            <div style={loadingTitleStyle}>
+              Loading assessment
+              methodology
+            </div>
+
+            <div style={loadingTextStyle}>
+              Retrieving the latest
+              governed assessment
+              information.
+            </div>
           </div>
         </main>
       </AppShell>
     );
   }
 
-  if (error || !overview) {
+  if (
+    error ||
+    !overview ||
+    !protection
+  ) {
     return (
       <AppShell>
         <main style={pageStyle}>
           <div style={errorStyle}>
             <strong>
-              We could not load the current
-              assessment information.
+              Methodology information
+              could not be loaded.
             </strong>
 
-            <div style={{ marginTop: "6px" }}>
+            <div
+              style={{
+                marginTop:
+                  "8px",
+              }}
+            >
               {error ||
-                "Assessment information unavailable"}
+                "Data unavailable."}
             </div>
           </div>
         </main>
@@ -146,932 +228,1053 @@ export default function AboutPage() {
     );
   }
 
-  const currentPriorityTotal =
-    overview.priorities.priorityA +
-    overview.priorities.priorityB +
-    overview.priorities.priorityC;
+  const activePriorities =
+    overview.priorities
+      .priorityA +
+    overview.priorities
+      .priorityB +
+    overview.priorities
+      .priorityC;
 
-  const monitoringTotal =
-    overview.priorities.strategicMonitor +
-    overview.priorities.riskReview +
-    overview.priorities.monitor;
-
-  /*
-    The current overview API exposes High,
-    Medium and No Current Risk directly.
-
-    Low Risk is therefore derived as the
-    remaining assessed population.
-  */
-  const lowRisk =
-    overview.assessedSites -
-    overview.risk.high -
-    overview.risk.medium -
-    overview.risk.noCurrentRisk;
-
-  const planningReviewOnly =
-    overview.planning
-      .planningReviewEvidenceSites -
-    overview.planning.confirmedRf6Sites;
+  const reviewOnlyPlanning =
+    Math.max(
+      0,
+      overview.planning
+        .planningReviewEvidenceSites -
+        overview.planning
+          .confirmedRf6Sites
+    );
 
   return (
     <AppShell>
       <main style={pageStyle}>
-        {/* HERO */}
-
-        <section style={heroStyle}>
+        <section
+          id="assessment"
+          style={heroStyle}
+        >
           <div style={heroEyebrowStyle}>
-            Assessment & assurance
+            About the assessment
           </div>
 
           <h1 style={heroTitleStyle}>
-            How the London Early Warning
-            System works
+            How the London Early
+            Warning System assesses
+            playing fields.
           </h1>
 
           <p style={heroTextStyle}>
-            The system provides a consistent
-            evidence-led assessment of current
-            London playing-field sites. It
-            identifies where risk signals are
-            present, considers how strategically
-            important each site is and then
-            assigns an appropriate priority or
-            monitoring outcome.
+            The assessment combines
+            evidence about current
+            risk exposure with the
+            strategic value of each
+            playing field. The two
+            dimensions are kept
+            separate and then
+            combined to determine
+            the appropriate priority,
+            review or monitoring
+            outcome.
           </p>
 
-          <div style={heroActionsStyle}>
-            <a
-              href="#method"
-              style={primaryActionStyle}
-            >
-              Understand the assessment ↓
-            </a>
+          <div style={heroMetaStyle}>
+            <span>
+              {formatNumber(
+                overview.assessedSites
+              )}{" "}
+              assessed sites
+            </span>
 
-            <Link
-              href="/sites"
-              style={secondaryActionStyle}
+            <span style={metaDotStyle}>
+              •
+            </span>
+
+            <span>
+              {formatNumber(
+                overview.boroughCount
+              )}{" "}
+              London boroughs
+            </span>
+
+            <span style={metaDotStyle}>
+              •
+            </span>
+
+            <span>
+              {formatNumber(
+                activePriorities
+              )}{" "}
+              current Priority A–C
+              sites
+            </span>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <SectionHeading
+            eyebrow="Assessment at a glance"
+            title="A risk-led early warning view of London's playing fields"
+            description="The system is designed to help partners identify where attention, review or monitoring may be warranted. It is not a prediction that a site will be lost, closed or developed."
+          />
+
+          <div style={summaryGridStyle}>
+            <SummaryCard
+              value={
+                overview.assessedSites
+              }
+              title="Sites assessed"
+              text="Current playing fields included in the assessment."
+              accent="#e21b23"
+            />
+
+            <SummaryCard
+              value={
+                activePriorities
+              }
+              title="Priority A–C"
+              text="Sites currently placed in an active priority category."
+              accent="#b7252b"
+            />
+
+            <SummaryCard
+              value={
+                overview.planning
+                  .planningReviewEvidenceSites
+              }
+              title="Planning evidence identified"
+              text="Sites with planning evidence identified for assessment or review."
+              accent="#d97832"
+            />
+
+            <SummaryCard
+              value={
+                overview.planning
+                  .confirmedRf6Sites
+              }
+              title="Planning evidence contributes"
+              text="Sites where sufficiently strong site-linked evidence contributes to the Planning Pressure assessment."
+              accent="#72528c"
+            />
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <SectionHeading
+            eyebrow="Scope"
+            title="What is included in the current assessment"
+            description="The core assessment is built around the current playing-field population that can be assessed consistently using the available evidence."
+          />
+
+          <div style={twoColumnGridStyle}>
+            <InfoPanel
+              title="Included"
+              text="Current playing fields that can be represented consistently in the assessment are scored for Risk Exposure and Strategic Value and assigned an outcome."
             >
-              Explore Sites →
+              <MiniPoint>
+                Operational playing
+                fields
+              </MiniPoint>
+
+              <MiniPoint>
+                Sites where pitches
+                are not currently
+                marked out but remain
+                in the assessed
+                population
+              </MiniPoint>
+
+              <MiniPoint>
+                Sites linked to PPS
+                evidence where
+                available
+              </MiniPoint>
+
+              <MiniPoint>
+                Sites with planning
+                evidence, including
+                evidence retained
+                only for review
+              </MiniPoint>
+            </InfoPanel>
+
+            <InfoPanel
+              title="Handled separately"
+              text="Some known protection cases are deliberately retained outside the current assessment rather than being forced into a priority category."
+            >
+              <MiniPoint>
+                Closed, dormant or
+                derelict protection
+                cases
+              </MiniPoint>
+
+              <MiniPoint>
+                Records not currently
+                matched confidently
+                to the assessed
+                population
+              </MiniPoint>
+
+              <MiniPoint>
+                Sites requiring an
+                Active Places or
+                current-status check
+              </MiniPoint>
+
+              <MiniPoint>
+                Records not currently
+                identified as playing
+                fields in PPS
+              </MiniPoint>
+            </InfoPanel>
+          </div>
+
+          <div style={scopeLinkWrapStyle}>
+            <Link
+              href="/protection"
+              style={inlineLinkStyle}
+            >
+              View Protection &
+              Reconciliation →
             </Link>
           </div>
         </section>
 
-        {/* ASSESSMENT AT A GLANCE */}
+        <section style={darkSectionStyle}>
+          <div style={darkIntroStyle}>
+            <div style={darkEyebrowStyle}>
+              Assessment approach
+            </div>
 
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Current assessment"
-            title="Assessment at a glance"
-            description="These figures are taken from the same governed assessment data used by the rest of the system."
-          />
+            <h2 style={darkTitleStyle}>
+              Risk is considered
+              first because it
+              determines the
+              escalation pathway.
+            </h2>
 
-          <div style={headlineGridStyle}>
-            <HeadlineMetric
-              value={overview.assessedSites}
-              label="sites in the current assessed population"
-            />
-
-            <HeadlineMetric
-              value={overview.boroughCount}
-              label="London boroughs represented"
-            />
-
-            <HeadlineMetric
-              value={currentPriorityTotal}
-              label="sites currently in Priority A, B or C"
-            />
-
-            <HeadlineMetric
-              value={monitoringTotal}
-              label="sites in monitoring or review categories"
-            />
+            <p style={darkLeadStyle}>
+              Strategic importance
+              alone does not make a
+              site an active
+              priority. Likewise,
+              background exposure
+              alone does not mean a
+              site is facing a
+              confirmed threat. The
+              outcome reflects the
+              combination of both
+              dimensions.
+            </p>
           </div>
 
-          <div style={validationPanelStyle}>
-            <div>
-              <div style={validationLabelStyle}>
-                Population reconciliation
-              </div>
-
-              <div style={validationHeadlineStyle}>
-                Every assessed site is accounted
-                for in a current priority or
-                monitoring category.
-              </div>
-            </div>
-
-            <div style={validationMathStyle}>
-              <strong>
-                {formatNumber(
-                  validation?.categoryTotal ??
-                    overview.assessedSites
-                )}
-              </strong>
-
-              <span>
-                {" "}
-                category records
-              </span>
-
-              <span style={validationEqualsStyle}>
-                =
-              </span>
-
-              <strong>
-                {formatNumber(
-                  overview.assessedSites
-                )}
-              </strong>
-
-              <span>
-                {" "}
-                assessed sites
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* SCOPE */}
-
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Coverage"
-            title="What does the assessment cover?"
-          />
-
-          <div style={scopeGridStyle}>
-            <div style={scopePrimaryStyle}>
-              <div style={scopeNumberStyle}>
-                {formatNumber(
-                  overview.assessedSites
-                )}
-              </div>
-
-              <div style={scopeLabelStyle}>
-                current assessed sites
-              </div>
-
-              <p style={scopeTextStyle}>
-                The current assessment covers
-                identified playing-field sites
-                across London that meet the
-                current assessment scope. Each
-                site has a unique record and is
-                considered using the same
-                risk-led framework.
-              </p>
-            </div>
-
-            <div style={scopeSecondaryStyle}>
-              <div style={cardEyebrowStyle}>
-                Protection cases remain visible
-              </div>
-
-              <h3 style={cardTitleStyle}>
-                Being outside the assessed
-                population does not mean a site
-                has been discarded.
-              </h3>
-
-              <p style={bodyTextStyle}>
-                Known protection cases that do
-                not sit within the current
-                assessed population, including
-                certain closed, dormant,
-                unmatched or other exceptional
-                records, are retained separately
-                within the protection and
-                reconciliation evidence.
-              </p>
-
-              <p style={bodyTextStyle}>
-                This prevents unresolved cases
-                from being forced into a ranking
-                simply to make the numbers fit.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* METHOD */}
-
-        <section
-          id="method"
-          style={sectionWrapStyle}
-        >
-          <SectionHeading
-            eyebrow="Risk-led methodology"
-            title="How each site is assessed"
-            description="Risk and Strategic Value are assessed as separate dimensions. Because this is an early-warning system, Risk is considered first when interpreting the result."
-          />
-
-          <div style={methodFlowStyle}>
-            <MethodCard
+          <div style={approachStepsStyle}>
+            <ApproachStep
               number="01"
-              eyebrow="Risk assessment"
-              title="What evidence suggests the site may be vulnerable?"
-              text="Ownership, management, known at-risk intelligence and planning-pressure evidence are considered to establish the current Risk band."
-              emphasis
+              title="Define the current scope"
+              text="Identify the playing fields that can be assessed consistently."
             />
 
-            <div style={methodPlusStyle}>
-              +
-            </div>
-
-            <MethodCard
+            <ApproachStep
               number="02"
-              eyebrow="Strategic value"
-              title="How important is the site to playing-field provision?"
-              text="The scale, type and strategic context of the recorded provision are assessed to establish the site's Strategic Value band."
+              title="Assess Risk Exposure"
+              text="Consider known concerns, ownership and management exposure, and planning pressure."
             />
 
-            <div style={methodArrowStyle}>
-              →
-            </div>
-
-            <MethodCard
+            <ApproachStep
               number="03"
-              eyebrow="Priority outcome"
-              title="What level of attention does the evidence suggest?"
-              text="Risk and Strategic Value are brought together through the risk-led priority matrix to produce the site's current outcome."
+              title="Assess Strategic Value"
+              text="Consider the role and significance of the site's playing-field provision."
             />
-          </div>
 
-          <div style={methodPrincipleStyle}>
-            <strong>
-              Why risk-led?
-            </strong>{" "}
-            A site with strong risk evidence
-            should not disappear simply because
-            its Strategic Value score is lower.
-            Risk determines the escalation
-            pathway, while Strategic Value helps
-            determine the level and type of
-            response.
+            <ApproachStep
+              number="04"
+              title="Determine the outcome"
+              text="Combine the Risk and Strategic Value bands using the governed priority matrix."
+            />
           </div>
         </section>
 
-        {/* RISK FIRST */}
-
-        <section style={sectionWrapStyle}>
+        <section style={sectionStyle}>
           <SectionHeading
-            eyebrow="1. Risk assessment"
-            title="What current risk signals are present?"
-            description="Four evidence areas contribute to the current Risk assessment. The codes are retained for traceability, but the assessment is presented here in plain language."
+            eyebrow="Risk assessment"
+            title="How exposed is the site to loss, decline, reduced access or change?"
+            description="Risk indicators are used as early-warning evidence. They should not be interpreted as confirmation that a site will be lost or developed."
           />
 
           <div style={criteriaGridStyle}>
-            <AssessmentCriterion
-              code="RF1"
+            <CriterionCard
               title="Ownership exposure"
-              question="Does the ownership arrangement indicate greater exposure to loss, reduced access or change?"
-              source="Ownership evidence associated with the current site record."
-              interpretation="Ownership categories are grouped according to their relative exposure within the current risk model."
+              purpose="Identifies ownership arrangements that may create greater exposure to loss, reduced access or change."
+              score="0–2"
             />
 
-            <AssessmentCriterion
-              code="RF2"
+            <CriterionCard
               title="Management exposure"
-              question="Does the way the site is currently managed indicate additional exposure?"
-              source="Management evidence associated with the current site record."
-              interpretation="Management arrangements are classified consistently according to their relative risk exposure."
+              purpose="Identifies management arrangements that may create greater exposure to loss or reduced access."
+              score="0–2"
             />
 
-            <AssessmentCriterion
-              code="RF3"
+            <CriterionCard
               title="Known at-risk evidence"
-              question="Has the site already been identified through established playing-pitch or protection intelligence as being at risk?"
-              source="Playing Pitch Strategy and reconciled known at-risk evidence."
-              interpretation="Relevant known at-risk evidence materially increases the current Risk assessment."
+              purpose="Recognises existing protection intelligence where a credible concern has already been recorded."
+              score="0 or 5"
             />
 
-            <AssessmentCriterion
-              code="RF6"
+            <CriterionCard
               title="Planning pressure"
-              question="Is there sufficiently strong site-linked planning evidence to contribute to the current risk assessment?"
-              source="London planning application evidence linked to assessed sites."
-              interpretation="Planning evidence is treated cautiously. Nearby applications alone do not automatically increase Risk."
+              purpose="Uses sufficiently strong site-linked planning evidence as an early-warning signal, while retaining weaker evidence separately for review."
+              score="0–3"
             />
           </div>
 
-          <div style={riskBandPanelStyle}>
+          <div style={bandPanelStyle}>
             <div>
-              <div style={cardEyebrowStyle}>
-                Current Risk bands
+              <div style={bandEyebrowStyle}>
+                Risk bands
               </div>
 
-              <h3 style={riskBandTitleStyle}>
-                The assessment distinguishes
-                four current levels of Risk.
+              <h3 style={bandTitleStyle}>
+                Risk Exposure is
+                grouped into four
+                bands.
               </h3>
             </div>
 
-            <div style={riskBandGridStyle}>
-              <RiskBandCard
-                label="High"
-                value={overview.risk.high}
-                tone="high"
+            <div style={bandItemsStyle}>
+              <BandItem
+                title="High"
+                text="Strong current exposure or known concern."
               />
 
-              <RiskBandCard
-                label="Medium"
-                value={overview.risk.medium}
-                tone="medium"
+              <BandItem
+                title="Medium"
+                text="Meaningful exposure requiring attention or review."
               />
 
-              <RiskBandCard
-                label="Low"
-                value={lowRisk}
-                tone="low"
+              <BandItem
+                title="Low"
+                text="Limited current exposure."
               />
 
-              <RiskBandCard
-                label="No current risk signal"
-                value={
-                  overview.risk.noCurrentRisk
-                }
-                tone="none"
+              <BandItem
+                title="No current risk signal"
+                text="No current risk signal identified through the available criteria."
               />
             </div>
           </div>
         </section>
 
-        {/* STRATEGIC VALUE */}
-
-        <section style={sectionWrapStyle}>
+        <section style={sectionStyle}>
           <SectionHeading
-            eyebrow="2. Strategic value"
-            title="How important is the site to playing-field provision?"
-            description="Strategic Value is assessed independently from Risk. It describes characteristics that make a site particularly important within the current playing-field network."
+            eyebrow="Strategic value"
+            title="How important is the site to current or future sport and physical activity provision?"
+            description="Strategic Value is assessed independently from risk. A strategically important site can therefore remain in monitoring if there is no current risk signal."
           />
 
           <div style={criteriaGridStyle}>
-            <AssessmentCriterion
-              code="SV1"
+            <CriterionCard
               title="Multi-pitch scale"
-              question="Does the site provide a significant concentration of adult or senior grass-pitch provision?"
-              source="Recorded playing-field provision."
-              interpretation="Larger concentrations of relevant pitch provision increase strategic importance."
+              purpose="Recognises larger playing-field sites with multiple adult or senior football and rugby pitch units."
+              score="0–3"
             />
 
-            <AssessmentCriterion
-              code="SV2"
+            <CriterionCard
               title="Full-size 3G provision"
-              question="Does the site provide full-size 3G provision?"
-              source="Recorded facility provision."
-              interpretation="Full-size 3G provision is recognised because of its potential strategic role in capacity and community use."
+              purpose="Recognises sites providing one or more confirmed full-size third-generation artificial grass pitches."
+              score="0–3"
             />
 
-            <AssessmentCriterion
-              code="SV3"
+            <CriterionCard
               title="Strategic sport provision"
-              question="Does the site support strategically important pitch sports?"
-              source="Recorded grass and artificial pitch provision."
-              interpretation="The assessment recognises strategic sports and facility types that may be difficult to replace."
+              purpose="Recognises provision supporting strategic playing-field sports including rugby, cricket and hockey."
+              score="0–2"
             />
 
-            <AssessmentCriterion
-              code="SV4"
+            <CriterionCard
               title="Share of borough provision"
-              question="Does the site account for a significant share of relevant recorded provision within its borough?"
-              source="Borough-level provision derived from the assessed population."
-              interpretation="Sites making a larger contribution to local supply receive greater strategic consideration."
+              purpose="Recognises sites that account for a significant share of equivalent provision within their borough."
+              score="0–3"
             />
 
-            <AssessmentCriterion
-              code="SV5"
-              title="Inner London context"
-              question="Is the site located where playing-field supply is particularly constrained?"
-              source="London geographic classification."
-              interpretation="Inner London context is recognised because alternative playing-field provision is generally more constrained."
+            <CriterionCard
+              title="Inner London"
+              purpose="Recognises the additional strategic significance of playing-field provision in Inner London."
+              score="0 or 2"
             />
 
-            <AssessmentCriterion
-              code="SV6"
+            <CriterionCard
               title="Deprivation"
-              question="Does the site serve a more deprived community context?"
-              source="Index of Multiple Deprivation."
-              interpretation="Deprivation provides an inequalities lens within the Strategic Value assessment."
+              purpose="Recognises provision serving areas with higher levels of deprivation using the Index of Multiple Deprivation."
+              score="0–2"
             />
           </div>
 
-          <div style={thresholdNoticeStyle}>
-            <div style={thresholdIconStyle}>
-              i
+          <div style={bandPanelStyle}>
+            <div>
+              <div style={bandEyebrowStyle}>
+                Strategic Value bands
+              </div>
+
+              <h3 style={bandTitleStyle}>
+                The combined
+                Strategic Value
+                score is grouped
+                into four bands.
+              </h3>
             </div>
 
-            <div>
-              <strong>
-                Detailed scoring rules
-              </strong>
+            <div style={bandItemsStyle}>
+              <BandItem
+                title="High"
+                text="Score 9–15"
+              />
 
-              <div style={thresholdTextStyle}>
-                The current system retains the
-                underlying criterion scores for
-                audit and site-level review.
-                Detailed numerical thresholds
-                should only be published here
-                once they have been formally
-                verified against the implemented
-                calculation rules.
-              </div>
+              <BandItem
+                title="Medium"
+                text="Score 5–8"
+              />
+
+              <BandItem
+                title="Low"
+                text="Score 1–4"
+              />
+
+              <BandItem
+                title="Not flagged"
+                text="Score 0"
+              />
             </div>
           </div>
         </section>
 
-        {/* MATRIX */}
-
-        <section style={sectionWrapStyle}>
+        <section style={sectionStyle}>
           <SectionHeading
-            eyebrow="3. Priority outcome"
-            title="How Risk and Strategic Value determine the outcome"
-            description="The matrix is deliberately presented with Risk first. Risk determines the escalation pathway; Strategic Value then distinguishes the appropriate level of attention."
+            eyebrow="Priority outcome"
+            title="Risk and Strategic Value are combined using a risk-led matrix"
+            description="The matrix determines whether a site sits in an active priority category, review category or monitoring category."
           />
 
-          <div style={matrixCardStyle}>
-            <div style={matrixScrollStyle}>
-              <table style={matrixTableStyle}>
-                <thead>
-                  <tr>
-                    <th style={matrixCornerStyle}>
-                      Risk ↓ / Strategic Value →
-                    </th>
+          <div style={matrixWrapStyle}>
+            <table style={matrixTableStyle}>
+              <thead>
+                <tr>
+                  <th style={cornerHeaderStyle}>
+                    Risk ↓ /
+                    Strategic Value →
+                  </th>
 
-                    <th style={matrixHeaderStyle}>
-                      High
-                    </th>
+                  <th style={matrixHeaderStyle}>
+                    High
+                  </th>
 
-                    <th style={matrixHeaderStyle}>
-                      Medium
-                    </th>
+                  <th style={matrixHeaderStyle}>
+                    Medium
+                  </th>
 
-                    <th style={matrixHeaderStyle}>
-                      Low
-                    </th>
+                  <th style={matrixHeaderStyle}>
+                    Low
+                  </th>
 
-                    <th style={matrixHeaderStyle}>
-                      Not flagged
-                    </th>
-                  </tr>
-                </thead>
+                  <th style={matrixHeaderStyle}>
+                    Not flagged
+                  </th>
+                </tr>
+              </thead>
 
-                <tbody>
-                  <tr>
-                    <th style={matrixRiskHeaderStyle}>
-                      High Risk
-                    </th>
+              <tbody>
+                <MatrixRow
+                  risk="High"
+                  values={[
+                    {
+                      label:
+                        "Priority A",
+                      tone: "a",
+                    },
+                    {
+                      label:
+                        "Priority A",
+                      tone: "a",
+                    },
+                    {
+                      label:
+                        "Priority B",
+                      tone: "b",
+                    },
+                    {
+                      label:
+                        "Priority B",
+                      tone: "b",
+                    },
+                  ]}
+                />
 
-                    <MatrixCell
-                      label="Priority A"
-                      tone="priorityA"
-                    />
+                <MatrixRow
+                  risk="Medium"
+                  values={[
+                    {
+                      label:
+                        "Priority C",
+                      tone: "c",
+                    },
+                    {
+                      label:
+                        "Priority C",
+                      tone: "c",
+                    },
+                    {
+                      label:
+                        "Risk Review",
+                      tone: "review",
+                    },
+                    {
+                      label:
+                        "Risk Review",
+                      tone: "review",
+                    },
+                  ]}
+                />
 
-                    <MatrixCell
-                      label="Priority A"
-                      tone="priorityA"
-                    />
+                <MatrixRow
+                  risk="Low"
+                  values={[
+                    {
+                      label:
+                        "Strategic Monitor",
+                      tone: "strategic",
+                    },
+                    {
+                      label:
+                        "Monitor",
+                      tone: "monitor",
+                    },
+                    {
+                      label:
+                        "Monitor",
+                      tone: "monitor",
+                    },
+                    {
+                      label:
+                        "Monitor",
+                      tone: "monitor",
+                    },
+                  ]}
+                />
 
-                    <MatrixCell
-                      label="Priority B"
-                      tone="priorityB"
-                    />
-
-                    <MatrixCell
-                      label="Priority B"
-                      tone="priorityB"
-                    />
-                  </tr>
-
-                  <tr>
-                    <th style={matrixRiskHeaderStyle}>
-                      Medium Risk
-                    </th>
-
-                    <MatrixCell
-                      label="Priority C"
-                      tone="priorityC"
-                    />
-
-                    <MatrixCell
-                      label="Priority C"
-                      tone="priorityC"
-                    />
-
-                    <MatrixCell
-                      label="Risk Review"
-                      tone="review"
-                    />
-
-                    <MatrixCell
-                      label="Risk Review"
-                      tone="review"
-                    />
-                  </tr>
-
-                  <tr>
-                    <th style={matrixRiskHeaderStyle}>
-                      Low Risk
-                    </th>
-
-                    <MatrixCell
-                      label="Strategic Monitor"
-                      tone="strategic"
-                    />
-
-                    <MatrixCell
-                      label="Monitor"
-                      tone="monitor"
-                    />
-
-                    <MatrixCell
-                      label="Monitor"
-                      tone="monitor"
-                    />
-
-                    <MatrixCell
-                      label="Monitor"
-                      tone="monitor"
-                    />
-                  </tr>
-
-                  <tr>
-                    <th style={matrixRiskHeaderStyle}>
-                      No current risk signal
-                    </th>
-
-                    <MatrixCell
-                      label="Strategic Monitor"
-                      tone="strategic"
-                    />
-
-                    <MatrixCell
-                      label="Monitor"
-                      tone="monitor"
-                    />
-
-                    <MatrixCell
-                      label="Monitor"
-                      tone="monitor"
-                    />
-
-                    <MatrixCell
-                      label="Monitor"
-                      tone="monitor"
-                    />
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                <MatrixRow
+                  risk="No current risk signal"
+                  values={[
+                    {
+                      label:
+                        "Strategic Monitor",
+                      tone: "strategic",
+                    },
+                    {
+                      label:
+                        "Monitor",
+                      tone: "monitor",
+                    },
+                    {
+                      label:
+                        "Monitor",
+                      tone: "monitor",
+                    },
+                    {
+                      label:
+                        "Monitor",
+                      tone: "monitor",
+                    },
+                  ]}
+                />
+              </tbody>
+            </table>
           </div>
 
-          <div style={priorityExplanationGridStyle}>
-            <PriorityExplanation
-              label="Priority A"
-              tone="priorityA"
-              value={
-                overview.priorities.priorityA
+          <div style={outcomeGridStyle}>
+            <OutcomeCard
+              title="Priority A"
+              count={
+                overview.priorities
+                  .priorityA
               }
-              text="High Risk combined with High or Medium Strategic Value. These sites represent the highest current strategic attention."
+              text="Highest current escalation category where high risk combines with high or medium strategic value."
             />
 
-            <PriorityExplanation
-              label="Priority B"
-              tone="priorityB"
-              value={
-                overview.priorities.priorityB
+            <OutcomeCard
+              title="Priority B"
+              count={
+                overview.priorities
+                  .priorityB
               }
-              text="High Risk combined with lower Strategic Value. The risk-led approach keeps these sites within an active priority pathway."
+              text="High-risk sites with lower current strategic-value bands."
             />
 
-            <PriorityExplanation
-              label="Priority C"
-              tone="priorityC"
-              value={
-                overview.priorities.priorityC
+            <OutcomeCard
+              title="Priority C"
+              count={
+                overview.priorities
+                  .priorityC
               }
-              text="Medium Risk combined with High or Medium Strategic Value."
+              text="Medium-risk sites with high or medium strategic value."
             />
 
-            <PriorityExplanation
-              label="Risk Review"
-              tone="review"
-              value={
-                overview.priorities.riskReview
+            <OutcomeCard
+              title="Risk Review"
+              count={
+                overview.priorities
+                  .riskReview
               }
-              text="Medium Risk combined with lower Strategic Value. The evidence warrants review without implying a confirmed site-loss threat."
+              text="Sites with medium exposure where the evidence warrants review but not an active Priority A–C outcome."
             />
 
-            <PriorityExplanation
-              label="Strategic Monitor"
-              tone="strategic"
-              value={
+            <OutcomeCard
+              title="Strategic Monitor"
+              count={
                 overview.priorities
                   .strategicMonitor
               }
-              text="High Strategic Value with only Low or no current Risk signal. These important assets remain under observation."
+              text="High strategic-value sites with low or no current risk signal."
             />
 
-            <PriorityExplanation
-              label="Monitor"
-              tone="monitor"
-              value={
-                overview.priorities.monitor
+            <OutcomeCard
+              title="Monitor"
+              count={
+                overview.priorities
+                  .monitor
               }
-              text="The current combination of Risk and Strategic Value does not require escalation, but the site remains within the monitored population."
+              text="Sites retained within the assessed population without a current escalation outcome."
             />
           </div>
         </section>
 
-        {/* PLANNING ASSURANCE */}
-
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Planning evidence assurance"
-            title="Finding planning evidence does not automatically mean a site is at risk"
-            description="Planning evidence is deliberately separated into evidence discovery, review and evidence strong enough to contribute to the RF6 risk factor."
-          />
-
-          <div style={planningAssuranceStyle}>
-            <div style={planningMetricStyle}>
-              <div style={planningMetricNumberStyle}>
-                {formatNumber(
-                  overview.planning
-                    .planningReviewEvidenceSites
-                )}
-              </div>
-
-              <div style={planningMetricTitleStyle}>
-                sites with planning evidence
-                identified
-              </div>
-
-              <div style={planningMetricTextStyle}>
-                Potentially relevant planning
-                evidence has been identified and
-                retained for assessment or
-                review.
-              </div>
+        <section style={planningSectionStyle}>
+          <div style={planningIntroStyle}>
+            <div style={eyebrowStyle}>
+              Planning evidence
             </div>
 
-            <div style={planningOperatorStyle}>
+            <h2 style={planningHeadingStyle}>
+              Planning evidence is
+              screened before it can
+              affect the Risk
+              assessment.
+            </h2>
+
+            <p style={planningLeadStyle}>
+              Nearby development
+              activity is not treated
+              automatically as a
+              threat to a playing
+              field. Evidence is
+              separated between
+              sufficiently strong
+              site-linked evidence
+              and evidence retained
+              only for review.
+            </p>
+          </div>
+
+          <div style={planningFlowStyle}>
+            <PlanningStat
+              value={
+                overview.planning
+                  .planningReviewEvidenceSites
+              }
+              title="Planning evidence identified"
+              text="Sites where planning evidence has been identified."
+            />
+
+            <div style={arrowStyle}>
               →
             </div>
 
-            <div style={planningMetricStyle}>
-              <div style={planningMetricNumberStyle}>
-                {formatNumber(
-                  Math.max(
-                    planningReviewOnly,
-                    0
-                  )
-                )}
-              </div>
+            <PlanningStat
+              value={
+                reviewOnlyPlanning
+              }
+              title="Review only"
+              text="Evidence retained for manual review but not used directly in the Planning Pressure assessment."
+            />
 
-              <div style={planningMetricTitleStyle}>
-                review-only sites
-              </div>
-
-              <div style={planningMetricTextStyle}>
-                Planning evidence is visible,
-                but it does not currently
-                contribute an RF6 planning-risk
-                score.
-              </div>
-            </div>
-
-            <div style={planningPlusStyle}>
+            <div style={plusStyle}>
               +
             </div>
 
-            <div
-              style={{
-                ...planningMetricStyle,
-                ...planningScoredStyle,
-              }}
-            >
-              <div style={planningMetricNumberStyle}>
-                {formatNumber(
-                  overview.planning
-                    .confirmedRf6Sites
-                )}
-              </div>
-
-              <div style={planningMetricTitleStyle}>
-                sites with scored RF6 evidence
-              </div>
-
-              <div style={planningMetricTextStyle}>
-                Evidence met the cautious
-                site-linked rules required to
-                contribute to the Risk
-                assessment.
-              </div>
-            </div>
+            <PlanningStat
+              value={
+                overview.planning
+                  .confirmedRf6Sites
+              }
+              title="Contributes to assessment"
+              text="Sites where sufficiently strong site-linked evidence contributes to Planning Pressure."
+            />
           </div>
 
-          <div style={planningStatementStyle}>
+          <div style={planningNoteStyle}>
             <strong>
-              Key assurance:
+              Important:
             </strong>{" "}
-            a nearby planning application is not
-            automatically treated as a planning
-            threat. Only evidence meeting the
-            defined RF6 rules contributes to the
-            Risk score. Other potentially
-            relevant evidence remains visible
-            for review.
+            the{" "}
+            {formatNumber(
+              overview.planning
+                .planningReviewEvidenceSites
+            )}{" "}
+            sites with planning
+            evidence should not be
+            described as{" "}
+            {formatNumber(
+              overview.planning
+                .planningReviewEvidenceSites
+            )}{" "}
+            sites “at planning risk”.
+            Only the evidence that
+            satisfies the governed
+            Planning Pressure rules
+            contributes directly to
+            the Risk assessment.
           </div>
         </section>
 
-        {/* SOURCES */}
-
-        <section style={sectionWrapStyle}>
+        <section style={sectionStyle}>
           <SectionHeading
-            eyebrow="Evidence base"
-            title="What information supports the assessment?"
-            description="The system brings together multiple evidence sources rather than relying on a single dataset."
+            eyebrow="Protection coverage"
+            title="Known at-risk records remain visible even when they sit outside the current assessment"
+            description="Protection and reconciliation is kept separate from the current priority assessment so that unresolved or historic cases are not silently discarded."
           />
 
-          <div style={sourceGridStyle}>
-            <SourceCard
+          <div style={protectionGridStyle}>
+            <ProtectionStat
+              value={
+                protection.counts
+                  .total
+              }
+              title="Known at-risk records"
+              text="Records retained from the current protection evidence base."
+            />
+
+            <ProtectionStat
+              value={
+                protection.counts
+                  .currentAssessment
+              }
+              title="In current assessment"
+              text="Records matched to sites in the assessed playing-field population."
+            />
+
+            <ProtectionStat
+              value={
+                protection.counts
+                  .outsideCurrentAssessment
+              }
+              title="Retained separately"
+              text="Protection cases outside the current assessed population."
+            />
+          </div>
+
+          <div style={protectionBreakdownStyle}>
+            <BreakdownItem
+              value={
+                protection.counts
+                  .protectionWatchlist
+              }
+              title="Protection watchlist"
+              text="Closed, dormant or derelict cases."
+            />
+
+            <BreakdownItem
+              value={
+                protection.counts
+                  .manualReconciliation
+              }
+              title="Manual reconciliation"
+              text="Records requiring matching or current-status review."
+            />
+
+            <BreakdownItem
+              value={
+                protection.counts
+                  .outsidePlayingFieldScope
+              }
+              title="Outside current scope"
+              text="Records not currently identified as playing fields in PPS."
+            />
+          </div>
+
+          <div style={scopeLinkWrapStyle}>
+            <Link
+              href="/protection"
+              style={inlineLinkStyle}
+            >
+              Explore the protection
+              register →
+            </Link>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <SectionHeading
+            eyebrow="Evidence and assurance"
+            title="The assessment combines multiple sources and keeps uncertainty visible"
+            description="Where evidence is missing, incomplete or requires interpretation, the system is designed to surface that limitation rather than silently treat it as confirmed information."
+          />
+
+          <div style={evidenceGridStyle}>
+            <EvidenceCard
               title="Active Places"
-              text="Provides the core site and facility evidence used to identify and describe current sports provision."
+              text="Provides the core current site and facility evidence used to define and describe the assessed playing-field population."
             />
 
-            <SourceCard
-              title="Playing Pitch Strategy evidence"
-              text="Provides local playing-pitch context, known at-risk intelligence and supporting site evidence where available."
+            <EvidenceCard
+              title="Playing Pitch Strategies"
+              text="Provides linked playing-field, protection and contextual evidence where available."
             />
 
-            <SourceCard
+            <EvidenceCard
               title="Planning evidence"
-              text="London planning application evidence is linked cautiously to sites to support the RF6 planning-pressure assessment."
+              text="Provides early-warning evidence from planning applications, with stronger site-linked evidence separated from review-only evidence."
             />
 
-            <SourceCard
-              title="Index of Multiple Deprivation"
-              text="Provides the deprivation context used within the Strategic Value assessment."
+            <EvidenceCard
+              title="Deprivation"
+              text="Index of Multiple Deprivation evidence contributes to the Strategic Value assessment."
             />
 
-            <SourceCard
-              title="Geographic context"
-              text="Borough and London geography are used to understand local supply and the constrained Inner London context."
+            <EvidenceCard
+              title="Borough context"
+              text="The assessment considers each site's share of equivalent playing-field provision within its borough."
             />
 
-            <SourceCard
-              title="Protection intelligence"
-              text="Known protection and at-risk evidence is reconciled against the current assessed population rather than being discarded when records do not align perfectly."
-            />
-          </div>
-        </section>
-
-        {/* ASSURANCE */}
-
-        <section style={sectionWrapStyle}>
-          <SectionHeading
-            eyebrow="Data assurance"
-            title="How do we make the results auditable?"
-          />
-
-          <div style={assuranceGridStyle}>
-            <AssuranceCard
-              title="One site, one assessed record"
-              value={overview.assessedSites}
-              text="The current assessment is structured at site level so every assessed site has a single current outcome."
-            />
-
-            <AssuranceCard
-              title="Categories reconcile"
-              value={
-                validation?.categoryTotal ??
-                overview.assessedSites
-              }
-              text="The six current priority and monitoring categories reconcile back to the assessed population."
-            />
-
-            <AssuranceCard
-              title="PPS-linked sites"
-              value={
-                overview.evidence
-                  .ppsLinkedSites
-              }
-              text="Sites with a current link to Playing Pitch Strategy evidence."
-            />
-
-            <AssuranceCard
-              title="Review required"
-              value={
-                overview.evidence
-                  .reviewRequiredSites
-              }
-              text="Records where the current evidence indicates that additional review is required."
-            />
-          </div>
-
-          <div style={assurancePrinciplesStyle}>
-            <AssurancePrinciple
-              title="Missing evidence is not hidden"
-              text="Missing or uncertain data can be surfaced through explicit review and data-quality flags."
-            />
-
-            <AssurancePrinciple
-              title="Evidence and outcome remain separate"
-              text="Planning candidates, PPS evidence and other supporting signals remain visible rather than being collapsed into a single unexplained score."
-            />
-
-            <AssurancePrinciple
-              title="Exceptions are retained"
-              text="Known protection records that do not fit cleanly into the current assessed population remain available through reconciliation rather than being forced into a category."
-            />
-
-            <AssurancePrinciple
-              title="The assessment can be traced"
-              text="Site-level records expose the Risk factors, Strategic Value factors and evidence context behind the current outcome."
+            <EvidenceCard
+              title="Data quality and review"
+              text="Missing, conflicting or uncertain evidence can be retained for review rather than being hidden or automatically converted into a risk conclusion."
             />
           </div>
         </section>
 
-        {/* INTERPRETATION */}
-
-        <section style={interpretationStyle}>
+        <section style={interpretationSectionStyle}>
           <div>
             <div style={interpretationEyebrowStyle}>
-              How to interpret the result
+              Interpretation
             </div>
 
             <h2 style={interpretationTitleStyle}>
-              This is an early-warning system,
-              not a prediction of site loss.
+              What the Early Warning
+              System does — and does
+              not — tell you.
             </h2>
           </div>
 
-          <div style={interpretationTextWrapStyle}>
-            <p style={interpretationTextStyle}>
-              A Priority category means that
-              the current combination of Risk
-              and Strategic Value warrants a
-              greater level of attention. It
-              does not mean that redevelopment,
-              closure or loss is certain.
-            </p>
+          <div style={interpretationGridStyle}>
+            <InterpretationCard
+              title="It is an early-warning tool"
+              text="The assessment helps identify where further attention, investigation, engagement or monitoring may be appropriate."
+            />
 
-            <p style={interpretationTextStyle}>
-              Likewise, a Monitor category does
-              not mean that a site is
-              unimportant. Monitoring is an
-              explicit outcome within the
-              framework and allows emerging
-              evidence to be reviewed over time.
-            </p>
+            <InterpretationCard
+              title="It is not a prediction"
+              text="A high-risk or priority outcome does not mean a site will necessarily be lost, closed or developed."
+            />
 
-            <p style={interpretationTextStyle}>
-              The assessment supports
-              professional judgement and
-              prioritisation. It does not replace
-              local planning assessment,
-              Playing Pitch Strategies or
-              stakeholder knowledge.
-            </p>
+            <InterpretationCard
+              title="It is not a planning judgement"
+              text="The system does not determine the acceptability of a planning proposal or replace statutory planning processes."
+            />
+
+            <InterpretationCard
+              title="Evidence can change"
+              text="Site status, planning evidence and other source information can change, so outcomes should be interpreted using the latest available evidence."
+            />
           </div>
         </section>
-
-        {/* CTA */}
 
         <section style={ctaStyle}>
           <div>
             <div style={ctaEyebrowStyle}>
-              See the evidence in practice
+              Explore the evidence
             </div>
 
             <h2 style={ctaTitleStyle}>
-              Explore the current site
-              assessments.
+              See how the methodology
+              applies to individual
+              sites.
             </h2>
 
             <p style={ctaTextStyle}>
-              Search by site, borough, priority
-              or risk and open an individual
-              site record to see the evidence
-              behind its current assessment.
+              Explore current
+              priorities, risk,
+              strategic value,
+              planning evidence and
+              site-level supporting
+              information.
             </p>
           </div>
 
-          <Link
-            href="/sites"
-            style={ctaButtonStyle}
-          >
-            Explore Sites →
-          </Link>
+          <div style={ctaButtonsStyle}>
+            <Link
+              href="/sites"
+              style={primaryButtonStyle}
+            >
+              Explore Sites →
+            </Link>
+
+            <Link
+              href="/priority"
+              style={secondaryButtonStyle}
+            >
+              Priority & Monitoring
+            </Link>
+          </div>
         </section>
       </main>
     </AppShell>
   );
 }
 
-/* =========================================================
-   COMPONENTS
-   ========================================================= */
+function normaliseOverview(
+  raw: unknown
+): OverviewResponse {
+  const candidate =
+    (
+      raw as {
+        overview?: unknown;
+        data?: unknown;
+      }
+    )?.overview ??
+    (
+      raw as {
+        data?: unknown;
+      }
+    )?.data ??
+    raw;
+
+  const source =
+    candidate as Partial<OverviewResponse>;
+
+  return {
+    assessedSites:
+      Number(
+        source.assessedSites ??
+          0
+      ),
+
+    boroughCount:
+      Number(
+        source.boroughCount ??
+          0
+      ),
+
+    priorities: {
+      priorityA:
+        Number(
+          source.priorities
+            ?.priorityA ??
+            0
+        ),
+
+      priorityB:
+        Number(
+          source.priorities
+            ?.priorityB ??
+            0
+        ),
+
+      priorityC:
+        Number(
+          source.priorities
+            ?.priorityC ??
+            0
+        ),
+
+      strategicMonitor:
+        Number(
+          source.priorities
+            ?.strategicMonitor ??
+            0
+        ),
+
+      riskReview:
+        Number(
+          source.priorities
+            ?.riskReview ??
+            0
+        ),
+
+      monitor:
+        Number(
+          source.priorities
+            ?.monitor ??
+            0
+        ),
+    },
+
+    risk: {
+      high:
+        Number(
+          source.risk
+            ?.high ??
+            0
+        ),
+
+      medium:
+        Number(
+          source.risk
+            ?.medium ??
+            0
+        ),
+
+      noCurrentRisk:
+        Number(
+          source.risk
+            ?.noCurrentRisk ??
+            0
+        ),
+    },
+
+    planning: {
+      confirmedRf6Sites:
+        Number(
+          source.planning
+            ?.confirmedRf6Sites ??
+            0
+        ),
+
+      planningReviewEvidenceSites:
+        Number(
+          source.planning
+            ?.planningReviewEvidenceSites ??
+            0
+        ),
+    },
+
+    evidence: {
+      ppsLinkedSites:
+        Number(
+          source.evidence
+            ?.ppsLinkedSites ??
+            0
+        ),
+
+      knownAtRiskSites:
+        Number(
+          source.evidence
+            ?.knownAtRiskSites ??
+            0
+        ),
+
+      reviewRequiredSites:
+        Number(
+          source.evidence
+            ?.reviewRequiredSites ??
+            0
+        ),
+
+      imdDecile1To3Sites:
+        Number(
+          source.evidence
+            ?.imdDecile1To3Sites ??
+            0
+        ),
+    },
+  };
+}
 
 function SectionHeading({
   eyebrow,
@@ -1080,12 +1283,12 @@ function SectionHeading({
 }: {
   eyebrow: string;
   title: string;
-  description?: string;
+  description: string;
 }) {
   return (
     <div style={sectionHeadingStyle}>
       <div>
-        <div style={sectionEyebrowStyle}>
+        <div style={eyebrowStyle}>
           {eyebrow}
         </div>
 
@@ -1094,288 +1297,389 @@ function SectionHeading({
         </h2>
       </div>
 
-      {description && (
-        <p style={sectionDescriptionStyle}>
-          {description}
-        </p>
-      )}
+      <p style={sectionDescriptionStyle}>
+        {description}
+      </p>
     </div>
   );
 }
 
-function HeadlineMetric({
+function SummaryCard({
   value,
-  label,
-}: {
-  value: number;
-  label: string;
-}) {
-  return (
-    <div style={headlineMetricStyle}>
-      <div style={headlineValueStyle}>
-        {formatNumber(value)}
-      </div>
-
-      <div style={headlineLabelStyle}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function MethodCard({
-  number,
-  eyebrow,
   title,
   text,
-  emphasis = false,
+  accent,
 }: {
-  number: string;
-  eyebrow: string;
+  value: number;
   title: string;
   text: string;
-  emphasis?: boolean;
+  accent: string;
 }) {
   return (
-    <article
-      style={{
-        ...methodCardStyle,
-        ...(emphasis
-          ? methodCardEmphasisStyle
-          : {}),
-      }}
-    >
-      <div style={methodNumberStyle}>
-        {number}
-      </div>
-
-      <div style={methodEyebrowStyle}>
-        {eyebrow}
-      </div>
-
-      <h3 style={methodTitleStyle}>
-        {title}
-      </h3>
-
-      <p style={methodTextStyle}>
-        {text}
-      </p>
-    </article>
-  );
-}
-
-function AssessmentCriterion({
-  code,
-  title,
-  question,
-  source,
-  interpretation,
-}: {
-  code: string;
-  title: string;
-  question: string;
-  source: string;
-  interpretation: string;
-}) {
-  return (
-    <article style={criterionCardStyle}>
-      <div style={criterionHeaderStyle}>
-        <span style={criterionCodeStyle}>
-          {code}
-        </span>
-      </div>
-
-      <h3 style={criterionTitleStyle}>
-        {title}
-      </h3>
-
-      <div style={criterionQuestionStyle}>
-        {question}
-      </div>
-
-      <div style={criterionDividerStyle} />
-
-      <CriterionDetail
-        label="Evidence"
-        value={source}
-      />
-
-      <CriterionDetail
-        label="How it is interpreted"
-        value={interpretation}
-      />
-    </article>
-  );
-}
-
-function CriterionDetail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div style={criterionDetailStyle}>
-      <div style={criterionDetailLabelStyle}>
-        {label}
-      </div>
-
-      <div style={criterionDetailValueStyle}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function RiskBandCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "high" | "medium" | "low" | "none";
-}) {
-  return (
-    <div
-      style={{
-        ...riskBandCardStyle,
-        ...getRiskTone(tone),
-      }}
-    >
-      <div style={riskBandValueStyle}>
-        {formatNumber(value)}
-      </div>
-
-      <div style={riskBandLabelStyle}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function MatrixCell({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: Tone;
-}) {
-  return (
-    <td style={matrixCellStyle}>
-      <span
+    <article style={summaryCardStyle}>
+      <div
         style={{
-          ...matrixBadgeStyle,
-          ...getPriorityTone(tone),
+          ...summaryAccentStyle,
+          background:
+            accent,
         }}
-      >
-        {label}
-      </span>
-    </td>
-  );
-}
+      />
 
-function PriorityExplanation({
-  label,
-  tone,
-  value,
-  text,
-}: {
-  label: string;
-  tone: Tone;
-  value: number;
-  text: string;
-}) {
-  return (
-    <article style={priorityExplanationStyle}>
-      <div style={priorityExplanationHeaderStyle}>
-        <span
-          style={{
-            ...matrixBadgeStyle,
-            ...getPriorityTone(tone),
-          }}
-        >
-          {label}
-        </span>
+      <div style={summaryBodyStyle}>
+        <div style={summaryValueStyle}>
+          {formatNumber(
+            value
+          )}
+        </div>
 
-        <strong style={priorityCountStyle}>
-          {formatNumber(value)}
-        </strong>
-      </div>
-
-      <p style={priorityExplanationTextStyle}>
-        {text}
-      </p>
-    </article>
-  );
-}
-
-function SourceCard({
-  title,
-  text,
-}: {
-  title: string;
-  text: string;
-}) {
-  return (
-    <article style={sourceCardStyle}>
-      <h3 style={sourceTitleStyle}>
-        {title}
-      </h3>
-
-      <p style={sourceTextStyle}>
-        {text}
-      </p>
-    </article>
-  );
-}
-
-function AssuranceCard({
-  title,
-  value,
-  text,
-}: {
-  title: string;
-  value: number;
-  text: string;
-}) {
-  return (
-    <article style={assuranceCardStyle}>
-      <div style={assuranceValueStyle}>
-        {formatNumber(value)}
-      </div>
-
-      <h3 style={assuranceTitleStyle}>
-        {title}
-      </h3>
-
-      <p style={assuranceTextStyle}>
-        {text}
-      </p>
-    </article>
-  );
-}
-
-function AssurancePrinciple({
-  title,
-  text,
-}: {
-  title: string;
-  text: string;
-}) {
-  return (
-    <div style={assurancePrincipleStyle}>
-      <div style={assuranceTickStyle}>
-        ✓
-      </div>
-
-      <div>
-        <div style={assurancePrincipleTitleStyle}>
+        <div style={summaryTitleStyle}>
           {title}
         </div>
 
-        <div style={assurancePrincipleTextStyle}>
+        <div style={summaryTextStyle}>
+          {text}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function InfoPanel({
+  title,
+  text,
+  children,
+}: {
+  title: string;
+  text: string;
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <article style={infoPanelStyle}>
+      <h3 style={infoPanelTitleStyle}>
+        {title}
+      </h3>
+
+      <p style={infoPanelTextStyle}>
+        {text}
+      </p>
+
+      <div style={miniPointsStyle}>
+        {children}
+      </div>
+    </article>
+  );
+}
+
+function MiniPoint({
+  children,
+}: {
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div style={miniPointStyle}>
+      <span style={miniDotStyle} />
+
+      <span>
+        {children}
+      </span>
+    </div>
+  );
+}
+
+function ApproachStep({
+  number,
+  title,
+  text,
+}: {
+  number: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div style={approachStepStyle}>
+      <div style={approachNumberStyle}>
+        {number}
+      </div>
+
+      <div style={approachTitleStyle}>
+        {title}
+      </div>
+
+      <div style={approachTextStyle}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function CriterionCard({
+  title,
+  purpose,
+  score,
+}: {
+  title: string;
+  purpose: string;
+  score: string;
+}) {
+  return (
+    <article style={criterionCardStyle}>
+      <div style={criterionTopStyle}>
+        <h3 style={criterionTitleStyle}>
+          {title}
+        </h3>
+
+        <span style={scoreBadgeStyle}>
+          {score}
+        </span>
+      </div>
+
+      <p style={criterionTextStyle}>
+        {purpose}
+      </p>
+    </article>
+  );
+}
+
+function BandItem({
+  title,
+  text,
+}: {
+  title: string;
+  text: string;
+}) {
+  return (
+    <div style={bandItemStyle}>
+      <div style={bandItemTitleStyle}>
+        {title}
+      </div>
+
+      <div style={bandItemTextStyle}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+type MatrixTone =
+  | "a"
+  | "b"
+  | "c"
+  | "review"
+  | "strategic"
+  | "monitor";
+
+function MatrixRow({
+  risk,
+  values,
+}: {
+  risk: string;
+
+  values: {
+    label: string;
+    tone: MatrixTone;
+  }[];
+}) {
+  return (
+    <tr>
+      <th style={riskHeaderStyle}>
+        {risk}
+      </th>
+
+      {values.map(
+        (
+          value,
+          index
+        ) => (
+          <td
+            key={
+              `${risk}-${index}`
+            }
+            style={matrixCellStyle}
+          >
+            <span
+              style={{
+                ...matrixBadgeStyle,
+                ...getMatrixToneStyle(
+                  value.tone
+                ),
+              }}
+            >
+              {value.label}
+            </span>
+          </td>
+        )
+      )}
+    </tr>
+  );
+}
+
+function getMatrixToneStyle(
+  tone: MatrixTone
+): CSSProperties {
+  if (tone === "a") {
+    return {
+      background:
+        "#e21b23",
+      color:
+        "#ffffff",
+    };
+  }
+
+  if (tone === "b") {
+    return {
+      background:
+        "#f3b7ba",
+      color:
+        "#6f171c",
+    };
+  }
+
+  if (tone === "c") {
+    return {
+      background:
+        "#f5d9ca",
+      color:
+        "#754025",
+    };
+  }
+
+  if (tone === "review") {
+    return {
+      background:
+        "#ece3f2",
+      color:
+        "#60417b",
+    };
+  }
+
+  if (tone === "strategic") {
+    return {
+      background:
+        "#dce8ea",
+      color:
+        "#355c65",
+    };
+  }
+
+  return {
+    background:
+      "#efedeb",
+    color:
+      "#555555",
+  };
+}
+
+function OutcomeCard({
+  title,
+  count,
+  text,
+}: {
+  title: string;
+  count: number;
+  text: string;
+}) {
+  return (
+    <article style={outcomeCardStyle}>
+      <div style={outcomeTopStyle}>
+        <div style={outcomeTitleStyle}>
+          {title}
+        </div>
+
+        <div style={outcomeCountStyle}>
+          {formatNumber(
+            count
+          )}
+        </div>
+      </div>
+
+      <p style={outcomeTextStyle}>
+        {text}
+      </p>
+    </article>
+  );
+}
+
+function PlanningStat({
+  value,
+  title,
+  text,
+}: {
+  value: number;
+  title: string;
+  text: string;
+}) {
+  return (
+    <article style={planningStatStyle}>
+      <div style={planningValueStyle}>
+        {formatNumber(
+          value
+        )}
+      </div>
+
+      <div style={planningStatTitleStyle}>
+        {title}
+      </div>
+
+      <div style={planningStatTextStyle}>
+        {text}
+      </div>
+    </article>
+  );
+}
+
+function ProtectionStat({
+  value,
+  title,
+  text,
+}: {
+  value: number;
+  title: string;
+  text: string;
+}) {
+  return (
+    <article style={protectionStatStyle}>
+      <div style={protectionValueStyle}>
+        {formatNumber(
+          value
+        )}
+      </div>
+
+      <div style={protectionTitleStyle}>
+        {title}
+      </div>
+
+      <div style={protectionTextStyle}>
+        {text}
+      </div>
+    </article>
+  );
+}
+
+function BreakdownItem({
+  value,
+  title,
+  text,
+}: {
+  value: number;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div style={breakdownItemStyle}>
+      <div style={breakdownValueStyle}>
+        {formatNumber(
+          value
+        )}
+      </div>
+
+      <div>
+        <div style={breakdownTitleStyle}>
+          {title}
+        </div>
+
+        <div style={breakdownTextStyle}>
           {text}
         </div>
       </div>
@@ -1383,872 +1687,833 @@ function AssurancePrinciple({
   );
 }
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
+function EvidenceCard({
+  title,
+  text,
+}: {
+  title: string;
+  text: string;
+}) {
+  return (
+    <article style={evidenceCardStyle}>
+      <div style={evidenceAccentStyle} />
 
-function formatNumber(value: number) {
-  return value.toLocaleString("en-GB");
+      <h3 style={evidenceTitleStyle}>
+        {title}
+      </h3>
+
+      <p style={evidenceTextStyle}>
+        {text}
+      </p>
+    </article>
+  );
 }
 
-function getPriorityTone(
-  tone: Tone
-): React.CSSProperties {
-  switch (tone) {
-    case "priorityA":
-      return {
-        background: "#242424",
-        color: "#ffffff",
-      };
+function InterpretationCard({
+  title,
+  text,
+}: {
+  title: string;
+  text: string;
+}) {
+  return (
+    <div style={interpretationCardStyle}>
+      <div style={interpretationCardTitleStyle}>
+        {title}
+      </div>
 
-    case "priorityB":
-      return {
-        background: "#b96800",
-        color: "#ffffff",
-      };
-
-    case "priorityC":
-      return {
-        background: "#f2d7a7",
-        color: "#5f3900",
-      };
-
-    case "strategic":
-      return {
-        background: "#dfe9f7",
-        color: "#174f8a",
-      };
-
-    case "review":
-      return {
-        background: "#eee4f4",
-        color: "#674080",
-      };
-
-    default:
-      return {
-        background: "#ebe9e6",
-        color: "#555555",
-      };
-  }
+      <div style={interpretationCardTextStyle}>
+        {text}
+      </div>
+    </div>
+  );
 }
 
-function getRiskTone(
-  tone: "high" | "medium" | "low" | "none"
-): React.CSSProperties {
-  switch (tone) {
-    case "high":
-      return {
-        background: "#ffe5cf",
-        color: "#803600",
-      };
-
-    case "medium":
-      return {
-        background: "#fff2c7",
-        color: "#665100",
-      };
-
-    case "low":
-      return {
-        background: "#e9eef4",
-        color: "#40566d",
-      };
-
-    default:
-      return {
-        background: "#e7efea",
-        color: "#365746",
-      };
-  }
+function formatNumber(
+  value: number
+) {
+  return Number(
+    value
+  ).toLocaleString(
+    "en-GB"
+  );
 }
 
-/* =========================================================
-   STYLES
-   ========================================================= */
-
-const pageStyle: React.CSSProperties = {
+const pageStyle: CSSProperties = {
   maxWidth: "1440px",
   margin: "0 auto",
-  padding: "38px 28px 90px",
+  padding: "34px 28px 80px",
 };
 
-const loadingStyle: React.CSSProperties = {
-  padding: "80px 0",
-  color: "#666666",
-};
-
-const errorStyle: React.CSSProperties = {
+const loadingCardStyle: CSSProperties = {
   marginTop: "30px",
-  padding: "20px",
-  borderRadius: "12px",
-  background: "#fff0f0",
-  border: "1px solid #efb9bb",
-  color: "#7d2025",
+  padding: "30px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "16px",
 };
 
-const heroStyle: React.CSSProperties = {
+const loadingTitleStyle: CSSProperties = {
+  fontSize: "18px",
+  fontWeight: 850,
+};
+
+const loadingTextStyle: CSSProperties = {
+  marginTop: "6px",
+  color: "#737373",
+  fontSize: "12px",
+};
+
+const errorStyle: CSSProperties = {
+  marginTop: "30px",
+  padding: "22px",
+  background: "#fff0f0",
+  border: "1px solid #efb9bd",
+  borderRadius: "14px",
+  color: "#7b2026",
+};
+
+const heroStyle: CSSProperties = {
   background: "#171717",
   color: "#ffffff",
   borderRadius: "24px",
-  padding: "54px 52px",
-  marginBottom: "52px",
-  boxShadow:
-    "0 22px 60px rgba(20,20,20,0.14)",
+  padding: "46px 52px",
+  marginBottom: "44px",
 };
 
-const heroEyebrowStyle: React.CSSProperties = {
-  color: "#ef5358",
-  fontSize: "11px",
-  fontWeight: 850,
-  textTransform: "uppercase",
-  letterSpacing: "0.1em",
-};
-
-const heroTitleStyle: React.CSSProperties = {
-  maxWidth: "980px",
-  margin: "12px 0 18px",
-  fontSize: "clamp(42px, 6vw, 72px)",
-  lineHeight: 0.99,
-  letterSpacing: "-0.052em",
-  fontWeight: 900,
-};
-
-const heroTextStyle: React.CSSProperties = {
-  maxWidth: "850px",
-  margin: 0,
-  color: "#c4c4c4",
-  fontSize: "17px",
-  lineHeight: 1.65,
-};
-
-const heroActionsStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "10px",
-  marginTop: "28px",
-};
-
-const primaryActionStyle: React.CSSProperties = {
-  background: "#e21b23",
-  color: "#ffffff",
-  textDecoration: "none",
-  padding: "13px 18px",
-  borderRadius: "9px",
-  fontWeight: 850,
-  fontSize: "13px",
-};
-
-const secondaryActionStyle: React.CSSProperties = {
-  color: "#ffffff",
-  textDecoration: "none",
-  padding: "12px 18px",
-  border: "1px solid #555555",
-  borderRadius: "9px",
-  fontWeight: 750,
-  fontSize: "13px",
-};
-
-const sectionWrapStyle: React.CSSProperties = {
-  marginBottom: "56px",
-};
-
-const sectionHeadingStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: "32px",
-  alignItems: "end",
-  marginBottom: "22px",
-};
-
-const sectionEyebrowStyle: React.CSSProperties = {
-  color: "#e21b23",
+const heroEyebrowStyle: CSSProperties = {
+  color: "#ef555b",
   fontSize: "10px",
-  fontWeight: 850,
-  textTransform: "uppercase",
-  letterSpacing: "0.09em",
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  maxWidth: "820px",
-  margin: "6px 0 0",
-  fontSize: "32px",
-  lineHeight: 1.08,
-  letterSpacing: "-0.036em",
-};
-
-const sectionDescriptionStyle: React.CSSProperties = {
-  maxWidth: "720px",
-  margin: 0,
-  color: "#666666",
-  fontSize: "13px",
-  lineHeight: 1.65,
-};
-
-const headlineGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(210px, 1fr))",
-  gap: "14px",
-};
-
-const headlineMetricStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2ded9",
-  borderRadius: "15px",
-  padding: "22px",
-};
-
-const headlineValueStyle: React.CSSProperties = {
-  fontSize: "42px",
-  lineHeight: 1,
   fontWeight: 900,
-  letterSpacing: "-0.045em",
-};
-
-const headlineLabelStyle: React.CSSProperties = {
-  marginTop: "8px",
-  color: "#666666",
-  fontSize: "12px",
-  lineHeight: 1.45,
-};
-
-const validationPanelStyle: React.CSSProperties = {
-  marginTop: "14px",
-  background: "#e7efea",
-  color: "#365746",
-  border: "1px solid #cadbce",
-  borderRadius: "14px",
-  padding: "20px 22px",
-  display: "flex",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "22px",
-};
-
-const validationLabelStyle: React.CSSProperties = {
+  letterSpacing: "0.1em",
   textTransform: "uppercase",
-  fontSize: "9px",
-  fontWeight: 850,
-  letterSpacing: "0.08em",
 };
 
-const validationHeadlineStyle: React.CSSProperties = {
-  marginTop: "4px",
-  fontWeight: 800,
-  fontSize: "13px",
-};
-
-const validationMathStyle: React.CSSProperties = {
-  fontSize: "12px",
-};
-
-const validationEqualsStyle: React.CSSProperties = {
-  padding: "0 10px",
-  fontWeight: 900,
-};
-
-const scopeGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: "18px",
-};
-
-const scopePrimaryStyle: React.CSSProperties = {
-  background: "#171717",
-  color: "#ffffff",
-  borderRadius: "18px",
-  padding: "30px",
-};
-
-const scopeSecondaryStyle: React.CSSProperties = {
-  background: "#f1ede8",
-  borderRadius: "18px",
-  padding: "30px",
-};
-
-const scopeNumberStyle: React.CSSProperties = {
-  fontSize: "58px",
+const heroTitleStyle: CSSProperties = {
+  maxWidth: "1050px",
+  margin: "11px 0 17px",
+  fontSize:
+    "clamp(38px, 5vw, 62px)",
+  lineHeight: 1.02,
   fontWeight: 900,
   letterSpacing: "-0.05em",
 };
 
-const scopeLabelStyle: React.CSSProperties = {
-  color: "#bcbcbc",
-  fontSize: "12px",
-};
-
-const scopeTextStyle: React.CSSProperties = {
-  marginTop: "20px",
-  color: "#bdbdbd",
-  fontSize: "13px",
+const heroTextStyle: CSSProperties = {
+  maxWidth: "850px",
+  margin: 0,
+  color: "#c6c6c6",
+  fontSize: "15px",
   lineHeight: 1.65,
 };
 
-const cardEyebrowStyle: React.CSSProperties = {
-  color: "#e21b23",
-  fontSize: "10px",
-  fontWeight: 850,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
+const heroMetaStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "9px",
+  marginTop: "24px",
+  fontSize: "11px",
+  fontWeight: 800,
 };
 
-const cardTitleStyle: React.CSSProperties = {
-  margin: "8px 0 12px",
-  fontSize: "21px",
-  lineHeight: 1.25,
-  letterSpacing: "-0.025em",
+const metaDotStyle: CSSProperties = {
+  color: "#6c6c6c",
 };
 
-const bodyTextStyle: React.CSSProperties = {
-  color: "#626262",
-  fontSize: "13px",
-  lineHeight: 1.65,
+const sectionStyle: CSSProperties = {
+  marginBottom: "48px",
 };
 
-const methodFlowStyle: React.CSSProperties = {
+const sectionHeadingStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(220px, 1fr) auto minmax(220px, 1fr) auto minmax(220px, 1fr)",
-  gap: "12px",
-  alignItems: "stretch",
-  overflowX: "auto",
+    "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: "30px",
+  alignItems: "end",
+  marginBottom: "21px",
 };
 
-const methodCardStyle: React.CSSProperties = {
-  minWidth: "220px",
+const eyebrowStyle: CSSProperties = {
+  color: "#e21b23",
+  fontSize: "10px",
+  fontWeight: 900,
+  letterSpacing: "0.09em",
+  textTransform: "uppercase",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: "6px 0 0",
+  fontSize: "30px",
+  lineHeight: 1.15,
+  fontWeight: 850,
+  letterSpacing: "-0.035em",
+};
+
+const sectionDescriptionStyle: CSSProperties = {
+  maxWidth: "700px",
+  margin: 0,
+  color: "#666666",
+  fontSize: "12px",
+  lineHeight: 1.65,
+};
+
+const summaryGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "14px",
+};
+
+const summaryCardStyle: CSSProperties = {
+  overflow: "hidden",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "16px",
+};
+
+const summaryAccentStyle: CSSProperties = {
+  height: "5px",
+};
+
+const summaryBodyStyle: CSSProperties = {
+  padding: "21px",
+};
+
+const summaryValueStyle: CSSProperties = {
+  fontSize: "38px",
+  fontWeight: 900,
+  letterSpacing: "-0.05em",
+};
+
+const summaryTitleStyle: CSSProperties = {
+  marginTop: "5px",
+  fontSize: "12px",
+  fontWeight: 850,
+};
+
+const summaryTextStyle: CSSProperties = {
+  marginTop: "7px",
+  color: "#6b6b6b",
+  fontSize: "10px",
+  lineHeight: 1.55,
+};
+
+const twoColumnGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(340px, 1fr))",
+  gap: "14px",
+};
+
+const infoPanelStyle: CSSProperties = {
   background: "#ffffff",
   border: "1px solid #e2ded9",
   borderRadius: "16px",
   padding: "22px",
 };
 
-const methodCardEmphasisStyle: React.CSSProperties = {
-  borderTop: "5px solid #e21b23",
+const infoPanelTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "18px",
+  letterSpacing: "-0.02em",
 };
 
-const methodNumberStyle: React.CSSProperties = {
-  color: "#e21b23",
-  fontSize: "10px",
-  fontWeight: 900,
-};
-
-const methodEyebrowStyle: React.CSSProperties = {
-  marginTop: "10px",
-  color: "#777777",
-  fontSize: "9px",
-  fontWeight: 850,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-};
-
-const methodTitleStyle: React.CSSProperties = {
-  margin: "7px 0",
-  fontSize: "17px",
-  lineHeight: 1.35,
-};
-
-const methodTextStyle: React.CSSProperties = {
+const infoPanelTextStyle: CSSProperties = {
+  margin: "8px 0 0",
   color: "#666666",
   fontSize: "11px",
-  lineHeight: 1.55,
-  margin: 0,
-};
-
-const methodPlusStyle: React.CSSProperties = {
-  alignSelf: "center",
-  fontSize: "24px",
-  fontWeight: 900,
-  color: "#aaa39d",
-};
-
-const methodArrowStyle: React.CSSProperties = {
-  alignSelf: "center",
-  fontSize: "24px",
-  color: "#aaa39d",
-};
-
-const methodPrincipleStyle: React.CSSProperties = {
-  marginTop: "16px",
-  padding: "18px",
-  borderLeft: "5px solid #e21b23",
-  background: "#f4f1ed",
-  borderRadius: "10px",
-  color: "#555555",
-  fontSize: "12px",
   lineHeight: 1.6,
 };
 
-const criteriaGridStyle: React.CSSProperties = {
+const miniPointsStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "15px",
+  gap: "9px",
+  marginTop: "17px",
 };
 
-const criterionCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2ded9",
-  borderRadius: "16px",
-  padding: "22px",
-};
-
-const criterionHeaderStyle: React.CSSProperties = {
+const miniPointStyle: CSSProperties = {
   display: "flex",
-};
-
-const criterionCodeStyle: React.CSSProperties = {
-  background: "#171717",
-  color: "#ffffff",
-  borderRadius: "7px",
-  padding: "6px 8px",
+  gap: "9px",
+  alignItems: "flex-start",
+  color: "#333333",
   fontSize: "10px",
-  fontWeight: 900,
-};
-
-const criterionTitleStyle: React.CSSProperties = {
-  margin: "16px 0 7px",
-  fontSize: "18px",
-};
-
-const criterionQuestionStyle: React.CSSProperties = {
-  color: "#444444",
-  fontSize: "13px",
-  fontWeight: 700,
   lineHeight: 1.5,
 };
 
-const criterionDividerStyle: React.CSSProperties = {
-  height: "1px",
-  background: "#ece8e3",
-  margin: "17px 0",
+const miniDotStyle: CSSProperties = {
+  width: "6px",
+  height: "6px",
+  borderRadius: "50%",
+  background: "#e21b23",
+  marginTop: "5px",
+  flexShrink: 0,
 };
 
-const criterionDetailStyle: React.CSSProperties = {
-  marginBottom: "13px",
+const scopeLinkWrapStyle: CSSProperties = {
+  marginTop: "15px",
 };
 
-const criterionDetailLabelStyle: React.CSSProperties = {
-  color: "#888888",
-  fontSize: "9px",
+const inlineLinkStyle: CSSProperties = {
+  color: "#171717",
+  textDecoration: "none",
+  fontSize: "10px",
   fontWeight: 850,
+};
+
+const darkSectionStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(280px, 0.9fr) minmax(540px, 1.7fr)",
+  gap: "32px",
+  padding: "30px",
+  marginBottom: "48px",
+  background: "#171717",
+  color: "#ffffff",
+  borderRadius: "20px",
+};
+
+const darkIntroStyle: CSSProperties = {
+  alignSelf: "center",
+};
+
+const darkEyebrowStyle: CSSProperties = {
+  color: "#ef555b",
+  fontSize: "9px",
+  fontWeight: 900,
   textTransform: "uppercase",
-  letterSpacing: "0.07em",
+  letterSpacing: "0.08em",
 };
 
-const criterionDetailValueStyle: React.CSSProperties = {
-  marginTop: "4px",
-  color: "#606060",
-  fontSize: "11px",
-  lineHeight: 1.55,
+const darkTitleStyle: CSSProperties = {
+  margin: "7px 0 10px",
+  fontSize: "27px",
+  lineHeight: 1.16,
+  letterSpacing: "-0.035em",
 };
 
-const riskBandPanelStyle: React.CSSProperties = {
-  marginTop: "18px",
-  background: "#f1ede8",
-  borderRadius: "16px",
-  padding: "24px",
+const darkLeadStyle: CSSProperties = {
+  margin: 0,
+  color: "#bdbdbd",
+  fontSize: "10px",
+  lineHeight: 1.6,
+};
+
+const approachStepsStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "minmax(240px, 0.7fr) minmax(0, 1.4fr)",
-  gap: "24px",
+    "repeat(2, minmax(0, 1fr))",
+  gap: "11px",
 };
 
-const riskBandTitleStyle: React.CSSProperties = {
-  margin: "7px 0 0",
-  fontSize: "19px",
-};
-
-const riskBandGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(120px, 1fr))",
-  gap: "10px",
-};
-
-const riskBandCardStyle: React.CSSProperties = {
+const approachStepStyle: CSSProperties = {
+  padding: "15px",
+  background: "#262626",
   borderRadius: "11px",
-  padding: "16px",
 };
 
-const riskBandValueStyle: React.CSSProperties = {
-  fontSize: "28px",
+const approachNumberStyle: CSSProperties = {
+  color: "#ef555b",
+  fontSize: "9px",
   fontWeight: 900,
 };
 
-const riskBandLabelStyle: React.CSSProperties = {
+const approachTitleStyle: CSSProperties = {
+  marginTop: "7px",
   fontSize: "10px",
-  fontWeight: 750,
-  marginTop: "4px",
+  fontWeight: 850,
 };
 
-const thresholdNoticeStyle: React.CSSProperties = {
-  marginTop: "16px",
-  padding: "17px",
-  borderRadius: "12px",
-  background: "#eef3f7",
-  border: "1px solid #d5e0e8",
+const approachTextStyle: CSSProperties = {
+  marginTop: "5px",
+  color: "#bdbdbd",
+  fontSize: "9px",
+  lineHeight: 1.5,
+};
+
+const criteriaGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(250px, 1fr))",
+  gap: "14px",
+};
+
+const criterionCardStyle: CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "15px",
+  padding: "19px",
+};
+
+const criterionTopStyle: CSSProperties = {
   display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
   gap: "12px",
 };
 
-const thresholdIconStyle: React.CSSProperties = {
-  width: "24px",
-  height: "24px",
-  borderRadius: "50%",
-  background: "#40566d",
-  color: "#ffffff",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-  fontWeight: 900,
+const criterionTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "14px",
+  letterSpacing: "-0.02em",
 };
 
-const thresholdTextStyle: React.CSSProperties = {
-  marginTop: "4px",
-  color: "#566270",
-  fontSize: "11px",
+const scoreBadgeStyle: CSSProperties = {
+  flexShrink: 0,
+  padding: "4px 7px",
+  borderRadius: "999px",
+  background: "#f1eeeb",
+  color: "#555555",
+  fontSize: "8px",
+  fontWeight: 850,
+};
+
+const criterionTextStyle: CSSProperties = {
+  margin: "8px 0 0",
+  color: "#666666",
+  fontSize: "10px",
   lineHeight: 1.55,
 };
 
-const matrixCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2ded9",
-  borderRadius: "18px",
-  padding: "18px",
-};
-
-const matrixScrollStyle: React.CSSProperties = {
-  overflowX: "auto",
-};
-
-const matrixTableStyle: React.CSSProperties = {
-  width: "100%",
-  minWidth: "900px",
-  borderCollapse: "separate",
-  borderSpacing: "5px",
-};
-
-const matrixCornerStyle: React.CSSProperties = {
-  background: "#171717",
-  color: "#ffffff",
-  borderRadius: "9px",
-  padding: "16px",
-  textAlign: "left",
-  fontSize: "11px",
-};
-
-const matrixHeaderStyle: React.CSSProperties = {
-  background: "#f1eeea",
-  borderRadius: "9px",
-  padding: "16px",
-  textAlign: "center",
-  fontSize: "11px",
-  fontWeight: 850,
-};
-
-const matrixRiskHeaderStyle: React.CSSProperties = {
-  background: "#f1eeea",
-  borderRadius: "9px",
-  padding: "16px",
-  textAlign: "left",
-  fontSize: "11px",
-  fontWeight: 850,
-};
-
-const matrixCellStyle: React.CSSProperties = {
-  background: "#faf9f7",
-  borderRadius: "9px",
-  padding: "20px 12px",
-  textAlign: "center",
-};
-
-const matrixBadgeStyle: React.CSSProperties = {
-  display: "inline-flex",
-  borderRadius: "999px",
-  padding: "7px 10px",
-  fontSize: "10px",
-  fontWeight: 850,
-  whiteSpace: "nowrap",
-};
-
-const priorityExplanationGridStyle: React.CSSProperties = {
+const bandPanelStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(280px, 1fr))",
+    "minmax(220px, 0.7fr) minmax(500px, 1.7fr)",
+  gap: "24px",
+  marginTop: "15px",
+  padding: "20px",
+  background: "#f2efeb",
+  borderRadius: "14px",
+};
+
+const bandEyebrowStyle: CSSProperties = {
+  color: "#e21b23",
+  fontSize: "8px",
+  fontWeight: 900,
+  textTransform: "uppercase",
+};
+
+const bandTitleStyle: CSSProperties = {
+  margin: "5px 0 0",
+  fontSize: "18px",
+  lineHeight: 1.2,
+};
+
+const bandItemsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(2, minmax(0, 1fr))",
+  gap: "9px",
+};
+
+const bandItemStyle: CSSProperties = {
+  background: "#ffffff",
+  borderRadius: "9px",
+  padding: "11px",
+};
+
+const bandItemTitleStyle: CSSProperties = {
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const bandItemTextStyle: CSSProperties = {
+  marginTop: "3px",
+  color: "#727272",
+  fontSize: "8px",
+  lineHeight: 1.4,
+};
+
+const matrixWrapStyle: CSSProperties = {
+  overflowX: "auto",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "16px",
+};
+
+const matrixTableStyle: CSSProperties = {
+  width: "100%",
+  minWidth: "820px",
+  borderCollapse: "collapse",
+};
+
+const cornerHeaderStyle: CSSProperties = {
+  padding: "15px",
+  textAlign: "left",
+  background: "#f4f1ed",
+  borderBottom: "1px solid #e2ded9",
+  borderRight: "1px solid #e2ded9",
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const matrixHeaderStyle: CSSProperties = {
+  padding: "15px",
+  background: "#f4f1ed",
+  borderBottom: "1px solid #e2ded9",
+  fontSize: "9px",
+  fontWeight: 850,
+  textAlign: "center",
+};
+
+const riskHeaderStyle: CSSProperties = {
+  width: "180px",
+  padding: "15px",
+  textAlign: "left",
+  borderRight: "1px solid #eeeae6",
+  borderBottom: "1px solid #eeeae6",
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const matrixCellStyle: CSSProperties = {
+  padding: "13px",
+  textAlign: "center",
+  borderBottom: "1px solid #eeeae6",
+};
+
+const matrixBadgeStyle: CSSProperties = {
+  display: "inline-block",
+  minWidth: "105px",
+  padding: "7px 9px",
+  borderRadius: "999px",
+  fontSize: "8px",
+  fontWeight: 850,
+};
+
+const outcomeGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "12px",
   marginTop: "15px",
 };
 
-const priorityExplanationStyle: React.CSSProperties = {
+const outcomeCardStyle: CSSProperties = {
   background: "#ffffff",
   border: "1px solid #e2ded9",
   borderRadius: "13px",
-  padding: "17px",
+  padding: "16px",
 };
 
-const priorityExplanationHeaderStyle: React.CSSProperties = {
+const outcomeTopStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "15px",
-  alignItems: "center",
+  gap: "10px",
 };
 
-const priorityCountStyle: React.CSSProperties = {
-  fontSize: "20px",
+const outcomeTitleStyle: CSSProperties = {
+  fontSize: "10px",
+  fontWeight: 850,
 };
 
-const priorityExplanationTextStyle: React.CSSProperties = {
-  margin: "11px 0 0",
-  color: "#666666",
-  fontSize: "11px",
-  lineHeight: 1.55,
+const outcomeCountStyle: CSSProperties = {
+  fontSize: "18px",
+  fontWeight: 900,
 };
 
-const planningAssuranceStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "minmax(200px, 1fr) auto minmax(200px, 1fr) auto minmax(200px, 1fr)",
-  gap: "12px",
-  alignItems: "stretch",
-  overflowX: "auto",
+const outcomeTextStyle: CSSProperties = {
+  margin: "8px 0 0",
+  color: "#696969",
+  fontSize: "9px",
+  lineHeight: 1.5,
 };
 
-const planningMetricStyle: React.CSSProperties = {
-  minWidth: "200px",
+const planningSectionStyle: CSSProperties = {
+  marginBottom: "48px",
+  padding: "28px",
   background: "#ffffff",
   border: "1px solid #e2ded9",
-  borderRadius: "15px",
-  padding: "21px",
+  borderRadius: "18px",
 };
 
-const planningScoredStyle: React.CSSProperties = {
-  borderTop: "5px solid #e21b23",
+const planningIntroStyle: CSSProperties = {
+  maxWidth: "780px",
 };
 
-const planningMetricNumberStyle: React.CSSProperties = {
-  fontSize: "38px",
+const planningHeadingStyle: CSSProperties = {
+  margin: "7px 0 10px",
+  fontSize: "29px",
+  lineHeight: 1.17,
+  letterSpacing: "-0.035em",
+};
+
+const planningLeadStyle: CSSProperties = {
+  margin: 0,
+  color: "#666666",
+  fontSize: "11px",
+  lineHeight: 1.6,
+};
+
+const planningFlowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "1fr auto 1fr auto 1fr",
+  gap: "10px",
+  alignItems: "center",
+  marginTop: "22px",
+};
+
+const planningStatStyle: CSSProperties = {
+  padding: "18px",
+  background: "#f7f4f0",
+  borderRadius: "12px",
+};
+
+const planningValueStyle: CSSProperties = {
+  fontSize: "34px",
   fontWeight: 900,
   letterSpacing: "-0.04em",
 };
 
-const planningMetricTitleStyle: React.CSSProperties = {
-  marginTop: "8px",
+const planningStatTitleStyle: CSSProperties = {
+  marginTop: "5px",
+  fontSize: "10px",
   fontWeight: 850,
-  fontSize: "12px",
 };
 
-const planningMetricTextStyle: React.CSSProperties = {
-  marginTop: "6px",
-  color: "#666666",
-  fontSize: "10px",
+const planningStatTextStyle: CSSProperties = {
+  marginTop: "5px",
+  color: "#6d6d6d",
+  fontSize: "9px",
   lineHeight: 1.5,
 };
 
-const planningOperatorStyle: React.CSSProperties = {
-  alignSelf: "center",
-  color: "#aaa39d",
-  fontSize: "23px",
-};
-
-const planningPlusStyle: React.CSSProperties = {
-  alignSelf: "center",
-  color: "#aaa39d",
-  fontSize: "23px",
+const arrowStyle: CSSProperties = {
+  color: "#999999",
+  fontSize: "22px",
   fontWeight: 900,
 };
 
-const planningStatementStyle: React.CSSProperties = {
-  marginTop: "16px",
-  padding: "17px",
-  background: "#fff8dc",
-  border: "1px solid #eadb99",
-  borderRadius: "12px",
-  color: "#5d541e",
-  fontSize: "12px",
-  lineHeight: 1.6,
+const plusStyle: CSSProperties = {
+  color: "#999999",
+  fontSize: "18px",
+  fontWeight: 900,
 };
 
-const sourceGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(250px, 1fr))",
-  gap: "13px",
-};
-
-const sourceCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2ded9",
-  borderRadius: "14px",
-  padding: "19px",
-};
-
-const sourceTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: "15px",
-};
-
-const sourceTextStyle: React.CSSProperties = {
-  margin: "7px 0 0",
-  color: "#666666",
-  fontSize: "11px",
+const planningNoteStyle: CSSProperties = {
+  marginTop: "15px",
+  padding: "13px",
+  background: "#fff8e3",
+  border: "1px solid #eadfb7",
+  borderRadius: "10px",
+  color: "#62581e",
+  fontSize: "9px",
   lineHeight: 1.55,
 };
 
-const assuranceGridStyle: React.CSSProperties = {
+const protectionGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(220px, 1fr))",
+    "repeat(3, minmax(0, 1fr))",
+  gap: "14px",
+};
+
+const protectionStatStyle: CSSProperties = {
+  padding: "20px",
+  background: "#ffffff",
+  border: "1px solid #e2ded9",
+  borderRadius: "14px",
+};
+
+const protectionValueStyle: CSSProperties = {
+  fontSize: "36px",
+  fontWeight: 900,
+};
+
+const protectionTitleStyle: CSSProperties = {
+  marginTop: "4px",
+  fontSize: "11px",
+  fontWeight: 850,
+};
+
+const protectionTextStyle: CSSProperties = {
+  marginTop: "5px",
+  color: "#6b6b6b",
+  fontSize: "9px",
+  lineHeight: 1.5,
+};
+
+const protectionBreakdownStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(3, minmax(0, 1fr))",
+  gap: "10px",
+  marginTop: "12px",
+};
+
+const breakdownItemStyle: CSSProperties = {
+  display: "flex",
+  gap: "10px",
+  alignItems: "center",
+  padding: "13px",
+  background: "#f2efeb",
+  borderRadius: "10px",
+};
+
+const breakdownValueStyle: CSSProperties = {
+  fontSize: "23px",
+  fontWeight: 900,
+};
+
+const breakdownTitleStyle: CSSProperties = {
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const breakdownTextStyle: CSSProperties = {
+  marginTop: "3px",
+  color: "#707070",
+  fontSize: "8px",
+  lineHeight: 1.4,
+};
+
+const evidenceGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(240px, 1fr))",
   gap: "13px",
 };
 
-const assuranceCardStyle: React.CSSProperties = {
+const evidenceCardStyle: CSSProperties = {
+  position: "relative",
+  overflow: "hidden",
   background: "#ffffff",
   border: "1px solid #e2ded9",
-  borderRadius: "15px",
-  padding: "20px",
+  borderRadius: "14px",
+  padding: "18px",
 };
 
-const assuranceValueStyle: React.CSSProperties = {
-  fontSize: "31px",
-  fontWeight: 900,
+const evidenceAccentStyle: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  bottom: 0,
+  width: "4px",
+  background: "#e21b23",
 };
 
-const assuranceTitleStyle: React.CSSProperties = {
-  margin: "7px 0",
-  fontSize: "14px",
+const evidenceTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "12px",
 };
 
-const assuranceTextStyle: React.CSSProperties = {
-  color: "#666666",
-  fontSize: "10px",
-  lineHeight: 1.5,
+const evidenceTextStyle: CSSProperties = {
+  margin: "7px 0 0",
+  color: "#6b6b6b",
+  fontSize: "9px",
+  lineHeight: 1.55,
 };
 
-const assurancePrinciplesStyle: React.CSSProperties = {
-  marginTop: "15px",
+const interpretationSectionStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "11px",
-};
-
-const assurancePrincipleStyle: React.CSSProperties = {
-  background: "#f1ede8",
-  borderRadius: "12px",
-  padding: "16px",
-  display: "flex",
-  gap: "10px",
-};
-
-const assuranceTickStyle: React.CSSProperties = {
-  width: "24px",
-  height: "24px",
-  borderRadius: "50%",
-  background: "#e7efea",
-  color: "#365746",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-  fontSize: "10px",
-  fontWeight: 900,
-};
-
-const assurancePrincipleTitleStyle: React.CSSProperties = {
-  fontWeight: 850,
-  fontSize: "11px",
-};
-
-const assurancePrincipleTextStyle: React.CSSProperties = {
-  marginTop: "4px",
-  color: "#686868",
-  fontSize: "10px",
-  lineHeight: 1.5,
-};
-
-const interpretationStyle: React.CSSProperties = {
+    "minmax(280px, 0.8fr) minmax(540px, 1.7fr)",
+  gap: "30px",
+  padding: "29px",
+  marginBottom: "42px",
   background: "#171717",
   color: "#ffffff",
   borderRadius: "20px",
-  padding: "34px",
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: "40px",
-  marginBottom: "50px",
 };
 
-const interpretationEyebrowStyle: React.CSSProperties = {
-  color: "#ef5358",
-  fontSize: "10px",
-  fontWeight: 850,
+const interpretationEyebrowStyle: CSSProperties = {
+  color: "#ef555b",
+  fontSize: "9px",
+  fontWeight: 900,
   textTransform: "uppercase",
   letterSpacing: "0.08em",
 };
 
-const interpretationTitleStyle: React.CSSProperties = {
+const interpretationTitleStyle: CSSProperties = {
   margin: "7px 0 0",
-  fontSize: "28px",
-  lineHeight: 1.15,
+  fontSize: "25px",
+  lineHeight: 1.2,
   letterSpacing: "-0.035em",
 };
 
-const interpretationTextWrapStyle: React.CSSProperties = {
-  alignSelf: "center",
+const interpretationGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(2, minmax(0, 1fr))",
+  gap: "11px",
 };
 
-const interpretationTextStyle: React.CSSProperties = {
+const interpretationCardStyle: CSSProperties = {
+  padding: "13px",
+  background: "#262626",
+  borderRadius: "10px",
+};
+
+const interpretationCardTitleStyle: CSSProperties = {
+  fontSize: "9px",
+  fontWeight: 850,
+};
+
+const interpretationCardTextStyle: CSSProperties = {
+  marginTop: "5px",
   color: "#bdbdbd",
-  fontSize: "12px",
-  lineHeight: 1.65,
+  fontSize: "9px",
+  lineHeight: 1.5,
 };
 
-const ctaStyle: React.CSSProperties = {
-  background: "#e21b23",
-  color: "#ffffff",
-  borderRadius: "20px",
-  padding: "34px",
+const ctaStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: "35px",
+  gap: "28px",
+  padding: "29px",
+  background: "#e21b23",
+  color: "#ffffff",
+  borderRadius: "20px",
 };
 
-const ctaEyebrowStyle: React.CSSProperties = {
-  fontSize: "10px",
+const ctaEyebrowStyle: CSSProperties = {
+  fontSize: "9px",
   fontWeight: 850,
   textTransform: "uppercase",
   letterSpacing: "0.08em",
-  opacity: 0.8,
+  opacity: 0.82,
 };
 
-const ctaTitleStyle: React.CSSProperties = {
-  margin: "6px 0 9px",
-  fontSize: "29px",
+const ctaTitleStyle: CSSProperties = {
+  margin: "6px 0 8px",
+  fontSize: "27px",
   letterSpacing: "-0.035em",
 };
 
-const ctaTextStyle: React.CSSProperties = {
-  maxWidth: "720px",
+const ctaTextStyle: CSSProperties = {
+  maxWidth: "700px",
   margin: 0,
-  color: "#ffd5d7",
-  fontSize: "12px",
+  color: "#ffd8da",
+  fontSize: "10px",
   lineHeight: 1.6,
 };
 
-const ctaButtonStyle: React.CSSProperties = {
+const ctaButtonsStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "9px",
+};
+
+const primaryButtonStyle: CSSProperties = {
+  padding: "13px 18px",
   background: "#ffffff",
   color: "#171717",
   textDecoration: "none",
-  padding: "13px 19px",
   borderRadius: "9px",
-  fontSize: "12px",
+  fontSize: "10px",
   fontWeight: 850,
-  whiteSpace: "nowrap",
+};
+
+const secondaryButtonStyle: CSSProperties = {
+  padding: "13px 18px",
+  background: "transparent",
+  color: "#ffffff",
+  border: "1px solid #f48589",
+  textDecoration: "none",
+  borderRadius: "9px",
+  fontSize: "10px",
+  fontWeight: 850,
 };
