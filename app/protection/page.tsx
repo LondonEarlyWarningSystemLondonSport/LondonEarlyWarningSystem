@@ -98,6 +98,9 @@ type ProtectionResponse = {
   error?: string;
 };
 
+const INITIAL_VISIBLE = 12;
+const LOAD_MORE_COUNT = 12;
+
 export default function ProtectionPage() {
   const [
     data,
@@ -140,6 +143,14 @@ export default function ProtectionPage() {
     setBorough,
   ] =
     useState("all");
+
+  const [
+    visibleCount,
+    setVisibleCount,
+  ] =
+    useState(
+      INITIAL_VISIBLE
+    );
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +207,16 @@ export default function ProtectionPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setVisibleCount(
+      INITIAL_VISIBLE
+    );
+  }, [
+    search,
+    category,
+    borough,
+  ]);
 
   const boroughs =
     useMemo(() => {
@@ -280,6 +301,16 @@ export default function ProtectionPage() {
       category,
       borough,
     ]);
+
+  const visibleRecords =
+    filteredRecords.slice(
+      0,
+      visibleCount
+    );
+
+  const hasMore =
+    visibleCount <
+    filteredRecords.length;
 
   if (loading) {
     return (
@@ -679,18 +710,20 @@ export default function ProtectionPage() {
             Showing{" "}
             <strong>
               {
-                filteredRecords.length
+                visibleRecords.length
               }
             </strong>{" "}
             of{" "}
             <strong>
-              {data.counts.total}
+              {
+                filteredRecords.length
+              }
             </strong>{" "}
-            records
+            matching records
           </div>
 
           <div style={recordGridStyle}>
-            {filteredRecords.map(
+            {visibleRecords.map(
               (
                 record
               ) => (
@@ -713,6 +746,26 @@ export default function ProtectionPage() {
               the current filters.
             </div>
           )}
+
+          {hasMore && (
+            <div style={showMoreWrapStyle}>
+              <button
+                type="button"
+                onClick={() =>
+                  setVisibleCount(
+                    (
+                      current
+                    ) =>
+                      current +
+                      LOAD_MORE_COUNT
+                  )
+                }
+                style={showMoreButtonStyle}
+              >
+                Show more
+              </button>
+            </div>
+          )}
         </section>
 
         <section style={interpretationStyle}>
@@ -723,13 +776,14 @@ export default function ProtectionPage() {
 
             <h2 style={interpretationTitleStyle}>
               Reconciliation status
-              describes how the
-              record is handled,
-              not how important the
-              site is.
+              describes how a record
+              is handled.
             </h2>
 
             <p style={interpretationLeadStyle}>
+              It does not indicate
+              how strategically
+              important the site is.
               A site outside the
               current assessment may
               still warrant
@@ -949,6 +1003,28 @@ function ProtectionCard({
         record.siteName
       );
 
+  const showPlanning =
+    (record.planningPressureScore ||
+      0) > 0 ||
+    (record.planningCandidateApplicationCount ||
+      0) > 0 ||
+    record.planningReviewRequired ===
+      "Yes";
+
+  const showPpsException =
+    record.playingFieldInPps ===
+    "No";
+
+  const showTenure =
+    Boolean(
+      record.securityOfTenure
+    );
+
+  const showCommunityUse =
+    Boolean(
+      record.communityUse
+    );
+
   return (
     <article style={recordCardStyle}>
       <div style={recordHeaderStyle}>
@@ -977,7 +1053,9 @@ function ProtectionCard({
               categoryColours.text,
           }}
         >
-          {record.categoryLabel}
+          {getShortCategoryLabel(
+            record.category
+          )}
         </span>
       </div>
 
@@ -996,11 +1074,10 @@ function ProtectionCard({
               </div>
 
               <div style={matchedExplanationStyle}>
-                The known at-risk
-                source record has
-                been matched to this
-                current assessed
-                site.
+                This source record
+                has been matched to
+                the current assessed
+                site shown above.
               </div>
             </div>
           )}
@@ -1046,9 +1123,11 @@ function ProtectionCard({
             </div>
           </div>
 
-          <PlanningEvidence
-            record={record}
-          />
+          {showPlanning && (
+            <PlanningEvidence
+              record={record}
+            />
+          )}
         </>
       ) : (
         <div style={outsidePanelStyle}>
@@ -1067,22 +1146,6 @@ function ProtectionCard({
 
       <div style={contextGridStyle}>
         <DataPoint
-          label="PPS playing field"
-          value={
-            record.playingFieldInPps ||
-            "Not recorded"
-          }
-        />
-
-        <DataPoint
-          label="Known at-risk evidence"
-          value={
-            record.knownAtRisk ||
-            "Not recorded"
-          }
-        />
-
-        <DataPoint
           label="Ownership"
           value={
             record.ownershipType ||
@@ -1098,20 +1161,29 @@ function ProtectionCard({
           }
         />
 
-        {record.securityOfTenure && (
+        {showPpsException && (
+          <DataPoint
+            label="PPS playing field"
+            value="No"
+          />
+        )}
+
+        {showTenure && (
           <DataPoint
             label="Security of tenure"
             value={
-              record.securityOfTenure
+              record.securityOfTenure ||
+              "Not recorded"
             }
           />
         )}
 
-        {record.communityUse && (
+        {showCommunityUse && (
           <DataPoint
             label="Community use"
             value={
-              record.communityUse
+              record.communityUse ||
+              "Not recorded"
             }
           />
         )}
@@ -1190,11 +1262,11 @@ function PlanningEvidence({
         <div style={planningTextStyle}>
           {candidateCount >
           0
-            ? `${candidateCount} planning evidence ${
+            ? `${candidateCount} ${
                 candidateCount ===
                 1
-                  ? "record was"
-                  : "records were"
+                  ? "planning evidence record was"
+                  : "planning evidence records were"
               } identified for this site.`
             : "Site-linked planning evidence contributes to the current risk assessment."}
         </div>
@@ -1218,15 +1290,14 @@ function PlanningEvidence({
         </div>
 
         <div style={planningTextStyle}>
-          {candidateCount}{" "}
-          {candidateCount === 1
-            ? "planning evidence record has"
-            : "planning evidence records have"}{" "}
-          been identified, but this
-          evidence does not currently
-          contribute directly to the
-          Planning Pressure
-          assessment.
+          {candidateCount > 0
+            ? `${candidateCount} ${
+                candidateCount ===
+                1
+                  ? "planning evidence record has"
+                  : "planning evidence records have"
+              } been identified, but this evidence does not currently contribute directly to the Planning Pressure assessment.`
+            : "Planning evidence has been retained for review but does not currently contribute directly to the Planning Pressure assessment."}
         </div>
       </div>
     );
@@ -1295,7 +1366,7 @@ function friendlyReason(
     record.category ===
     "outside-playing-field-scope"
   ) {
-    return "The record is known to the protection evidence base but is not currently identified as a playing field in PPS.";
+    return "The record is retained for assurance and traceability, but PPS does not currently identify it as a playing field.";
   }
 
   if (
@@ -1325,6 +1396,34 @@ function friendlySiteStatus(
   }
 
   return value;
+}
+
+function getShortCategoryLabel(
+  category:
+    ProtectionRecord["category"]
+) {
+  if (
+    category ===
+    "current-assessment"
+  ) {
+    return "In current assessment";
+  }
+
+  if (
+    category ===
+    "protection-watchlist"
+  ) {
+    return "Protection watchlist";
+  }
+
+  if (
+    category ===
+    "manual-reconciliation"
+  ) {
+    return "Manual reconciliation";
+  }
+
+  return "Outside current scope";
 }
 
 function getLatestRunDate(
@@ -1830,7 +1929,7 @@ const postcodeStyle: CSSProperties = {
 
 const statusBadgeStyle: CSSProperties = {
   flexShrink: 0,
-  maxWidth: "150px",
+  maxWidth: "145px",
   padding: "6px 9px",
   borderRadius: "999px",
   textAlign: "center",
@@ -1889,22 +1988,22 @@ const assessmentGridStyle: CSSProperties = {
 
 const planningScoredStyle: CSSProperties = {
   marginTop: "12px",
-  padding: "12px",
-  background: "#fbe8e9",
-  border: "1px solid #efc5c7",
+  padding: "11px 12px",
+  background: "#f9ecec",
+  border: "1px solid #edcccc",
   borderRadius: "10px",
 };
 
 const planningReviewStyle: CSSProperties = {
   marginTop: "12px",
-  padding: "12px",
-  background: "#fff7dc",
-  border: "1px solid #eadc9d",
+  padding: "11px 12px",
+  background: "#fbf6e8",
+  border: "1px solid #e9dfbd",
   borderRadius: "10px",
 };
 
 const planningLabelStyle: CSSProperties = {
-  color: "#777777",
+  color: "#7a7a7a",
   fontSize: "8px",
   fontWeight: 850,
   textTransform: "uppercase",
@@ -1926,8 +2025,8 @@ const planningTextStyle: CSSProperties = {
 const outsidePanelStyle: CSSProperties = {
   marginTop: "15px",
   padding: "13px",
-  background: "#fff7dc",
-  border: "1px solid #eadc9d",
+  background: "#fff8e3",
+  border: "1px solid #eadfb7",
   borderRadius: "10px",
 };
 
@@ -1986,6 +2085,23 @@ const siteLinkStyle: CSSProperties = {
 const notLinkedStyle: CSSProperties = {
   color: "#999999",
   fontSize: "9px",
+};
+
+const showMoreWrapStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  marginTop: "22px",
+};
+
+const showMoreButtonStyle: CSSProperties = {
+  border: "1px solid #d8d3ce",
+  background: "#ffffff",
+  color: "#171717",
+  borderRadius: "999px",
+  padding: "11px 20px",
+  fontSize: "10px",
+  fontWeight: 850,
+  cursor: "pointer",
 };
 
 const emptyStyle: CSSProperties = {
