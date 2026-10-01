@@ -863,9 +863,11 @@ function BoroughShareCriterion({ site }: { site: SiteDetail }) {
 function MetricBox({
   label,
   value,
+  description,
 }: {
   label: string;
   value: string | number;
+  description?: string;
 }) {
   return (
     <div
@@ -894,6 +896,11 @@ function MetricBox({
       >
         {value}
       </div>
+      {description && (
+        <p style={{ margin: "8px 0 0", color: MUTED, fontSize: 11, lineHeight: 1.55 }}>
+          {description}
+        </p>
+      )}
     </div>
   );
 }
@@ -1406,10 +1413,11 @@ function RiskTab({
             />
 
             <MetricBox
-              label="Nearest candidate"
+              label="Nearest identified planning candidate"
               value={formatDistance(
                 site.nearest_planning_candidate_distance_metres
               )}
+              description="Distance to the nearest candidate application, which is not necessarily an application contributing to the Planning Pressure score. Proximity alone does not establish a threat to the site."
             />
           </div>
         </div>
