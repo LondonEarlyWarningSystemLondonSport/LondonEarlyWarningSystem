@@ -19,6 +19,7 @@ type BoroughRow = {
 
   high_risk_count: number;
   medium_risk_count: number;
+  low_risk_count: number;
   no_current_risk_count: number;
 
   pps_linked_count: number;
@@ -224,6 +225,7 @@ export async function GET() {
 
             high_risk_count
             medium_risk_count
+            low_risk_count
             no_current_risk_count
 
             pps_linked_count
@@ -257,9 +259,14 @@ export async function GET() {
           acc,
           borough
         ) => {
-          acc.sites +=
-            borough.total_sites ||
+           acc.sites +=
+             borough.total_sites ||
             0;
+
+           acc.highRisk += borough.high_risk_count || 0;
+           acc.mediumRisk += borough.medium_risk_count || 0;
+           acc.lowRisk += borough.low_risk_count || 0;
+           acc.noCurrentRisk += borough.no_current_risk_count || 0;
 
           acc.priority +=
             (borough.priority_a_count ||
@@ -289,6 +296,10 @@ export async function GET() {
         },
         {
           sites: 0,
+          highRisk: 0,
+          mediumRisk: 0,
+          lowRisk: 0,
+          noCurrentRisk: 0,
           priority: 0,
           planningReview: 0,
           confirmedPlanning: 0,
