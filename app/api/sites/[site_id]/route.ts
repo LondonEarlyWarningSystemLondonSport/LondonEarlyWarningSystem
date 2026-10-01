@@ -31,6 +31,7 @@ type SiteDetail = {
   sv4_basis_borough_units: number | null;
   sv5_inner_london_score: number | null;
   sv6_deprivation_score: number | null;
+  imd_decile: number | null;
 
   adult_football_rugby_pitch_units: number | null;
   rugby_pitch_units: number | null;
@@ -140,6 +141,7 @@ export async function GET(
             sv4_basis_borough_units
             sv5_inner_london_score
             sv6_deprivation_score
+            imd_decile
 
             adult_football_rugby_pitch_units
             rugby_pitch_units
