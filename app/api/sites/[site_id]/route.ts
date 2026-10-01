@@ -26,6 +26,9 @@ type SiteDetail = {
   sv2_full_size_3g_score: number | null;
   sv3_strategic_sport_score: number | null;
   sv4_share_of_borough_provision_score: number | null;
+  sv4_basis_category: string | null;
+  sv4_highest_valid_borough_share: number | null;
+  sv4_basis_borough_units: number | null;
   sv5_inner_london_score: number | null;
   sv6_deprivation_score: number | null;
 
@@ -132,6 +135,9 @@ export async function GET(
             sv2_full_size_3g_score
             sv3_strategic_sport_score
             sv4_share_of_borough_provision_score
+            sv4_basis_category
+            sv4_highest_valid_borough_share
+            sv4_basis_borough_units
             sv5_inner_london_score
             sv6_deprivation_score
 
