@@ -272,7 +272,7 @@ function SitesPageContent() {
           </div>
 
           {error && <div role="alert" style={{ margin: "0 24px 16px", padding: 15, background: "#fff0f0", border: "1px solid #efc1c3", borderRadius: 10, fontSize: 12, color: "#812329" }}>{error}</div>}
-          {!loading && !error && sites.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: MUTED }}>No sites match these filters. Try a different search, borough, priority or risk band.</div>}
+          {!loading && !error && sites.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: "#696969" }}>No sites match these filters. Try a different search, borough, priority or risk band.</div>}
 
           {!loading && sites.length > 0 && <div style={{ margin: "0 24px 20px", border: `1px solid ${BORDER}`, borderRadius: 12, overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: 1000, borderCollapse: "collapse", textAlign: "left" }}>
