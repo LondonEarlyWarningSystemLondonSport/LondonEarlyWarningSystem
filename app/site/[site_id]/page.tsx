@@ -38,6 +38,9 @@ type SiteDetail = {
   sv2_full_size_3g_score: NumericValue;
   sv3_strategic_sport_score: NumericValue;
   sv4_share_of_borough_provision_score: NumericValue;
+  sv4_basis_category: string | null;
+  sv4_highest_valid_borough_share: NumericValue;
+  sv4_basis_borough_units: NumericValue;
   sv5_inner_london_score: NumericValue;
   sv6_deprivation_score: NumericValue;
 
@@ -419,9 +422,9 @@ function getQualityIssues(site: SiteDetail): Issue[] {
 
   if (isYes(site.sv4_single_recorded_provision_flag)) {
     issues.push({
-      title: "Borough provision evidence requires review",
+      title: "Single recorded provider site",
       text:
-        "The site-level share of borough provision should be interpreted with care.",
+        "This site is flagged as the only recorded provider of its assessed provision category in the borough. The finding is limited to the available assessment records and is not, by itself, a data-quality failure.",
     });
   }
 
@@ -767,6 +770,90 @@ function AssessmentCriterion({
         }}
       >
         {description}
+      </p>
+    </article>
+  );
+}
+
+function BoroughShareCriterion({ site }: { site: SiteDetail }) {
+  const share = numericValue(site.sv4_highest_valid_borough_share);
+  const units = numericValue(site.sv4_basis_borough_units);
+  const category = safeText(site.sv4_basis_category);
+  const singleProvider = isYes(site.sv4_single_recorded_provision_flag);
+  const sourceNote = safeText(site.sv4_review_note);
+  const validShare = share !== null && share >= 0 && share <= 1;
+  const displayedShare = validShare && share !== null
+    ? `${(share * 100).toLocaleString("en-GB", {
+        maximumFractionDigits: 2,
+      })}%`
+    : "Not recorded";
+
+  return (
+    <article style={{ ...cardStyle, gridColumn: "1 / -1" }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between",
+        gap: 12, alignItems: "flex-start", flexWrap: "wrap",
+      }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Share of borough provision</h3>
+          <p style={{ margin: "6px 0 0", color: MUTED, fontSize: 11, lineHeight: 1.6 }}>
+            Share of equivalent recorded provision in the borough, for the category used in this assessment.
+          </p>
+        </div>
+        <span style={{
+          background: "#f0ede9", color: "#555", borderRadius: 100,
+          padding: "6px 10px", fontSize: 10, fontWeight: 850,
+        }}>
+          {numericValue(site.sv4_share_of_borough_provision_score) ?? "—"} / 3
+        </span>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))",
+        gap: 12, marginTop: 17,
+      }}>
+        <InfoCard
+          title="Provision category"
+          value={category || "Not recorded"}
+          text="Category used for the borough-share comparison."
+        />
+        <InfoCard
+          title="Recorded borough share"
+          value={displayedShare}
+          text="Share of the borough's recorded provision in this category."
+        />
+        <InfoCard
+          title="Borough provision"
+          value={units === null ? "Not recorded" : `${formatNumber(units)} ${units === 1 ? "unit" : "units"}`}
+          text="Total recorded borough units in the selected category, not the number of provider sites."
+        />
+        <InfoCard
+          title="Provider-site status"
+          value={singleProvider ? "Only recorded provider" : "Not flagged as sole provider"}
+          text="Based on available recorded sites within the borough."
+        />
+      </div>
+
+      {singleProvider && (
+        <div style={{
+          marginTop: 13, padding: "13px 15px", borderRadius: 10,
+          background: "#fff8e3", border: "1px solid #eadfb7",
+          color: "#66551f", fontSize: 11, lineHeight: 1.65,
+        }}>
+          <strong>Recorded provision note. </strong>
+          {sourceNote || `This site is flagged as the only recorded provider for ${category || "the assessed category"} in the borough.`}
+          {" "}This reflects the assessment dataset, not independent confirmation that no other provision exists.
+        </div>
+      )}
+      {!singleProvider && sourceNote && (
+        <p style={{ color: MUTED, fontSize: 11, lineHeight: 1.6, margin: "13px 0 0" }}>
+          <strong>Assessment note:</strong> {sourceNote}
+        </p>
+      )}
+      <p style={{ color: MUTED, fontSize: 10, lineHeight: 1.6, margin: "14px 0 0" }}>
+        Recorded borough share is category-specific and does not represent a share of all sports facilities.
+        A single recorded provider site may account for multiple provision units.
       </p>
     </article>
   );
@@ -1412,9 +1499,7 @@ function StrategicTab({ site }: { site: SiteDetail }) {
       title: "Share of borough provision",
       score: site.sv4_share_of_borough_provision_score,
       max: 3,
-      evidence: isYes(site.sv4_single_recorded_provision_flag)
-        ? "Borough provision evidence requires review"
-        : "Borough-level provision comparison",
+      evidence: "Recorded borough-share evidence",
       description:
         "Recognises sites accounting for a significant share of equivalent provision within the borough.",
     },
@@ -1497,16 +1582,20 @@ function StrategicTab({ site }: { site: SiteDetail }) {
         </div>
 
         <div style={gridStyle}>
-          {criteria.map((criterion) => (
-            <AssessmentCriterion
-              key={criterion.title}
-              title={criterion.title}
-              score={criterion.score}
-              maxScore={criterion.max}
-              evidence={criterion.evidence}
-              description={criterion.description}
-            />
-          ))}
+          {criteria.map((criterion) =>
+            criterion.title === "Share of borough provision" ? (
+              <BoroughShareCriterion key={criterion.title} site={site} />
+            ) : (
+              <AssessmentCriterion
+                key={criterion.title}
+                title={criterion.title}
+                score={criterion.score}
+                maxScore={criterion.max}
+                evidence={criterion.evidence}
+                description={criterion.description}
+              />
+            )
+          )}
         </div>
       </section>
 
