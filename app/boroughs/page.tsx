@@ -27,6 +27,7 @@ type Borough = {
 
   high_risk_count: number;
   medium_risk_count: number;
+  low_risk_count: number;
   no_current_risk_count: number;
 
   pps_linked_count: number;
@@ -43,6 +44,10 @@ type BoroughApiResponse = {
 
   totals: {
     sites: number;
+    highRisk: number;
+    mediumRisk: number;
+    lowRisk: number;
+    noCurrentRisk: number;
     priority: number;
     planningReview: number;
     confirmedPlanning: number;
@@ -349,7 +354,7 @@ export default function BoroughsPage() {
                 data.totals
                   .confirmedPlanning
               }
-              label="Scored RF6 signal"
+              label="Planning pressure contribution"
               description="Sites where planning evidence currently contributes to the Risk assessment."
             />
           </div>
@@ -363,8 +368,22 @@ export default function BoroughsPage() {
             A planning record may
             be retained for review
             without contributing to
-            a site’s current RF6
-            score.
+            a site’s current planning
+            pressure score.
+          </div>
+
+          <div style={riskSummaryWrapStyle}>
+            <div style={riskSummaryTitleStyle}>Risk exposure across London</div>
+            <div style={riskSummaryGridStyle}>
+              <RiskSummaryCard label="High" value={data.totals.highRisk} color="#803600" />
+              <RiskSummaryCard label="Medium" value={data.totals.mediumRisk} color="#806000" />
+              <RiskSummaryCard label="Low" value={data.totals.lowRisk} color="#365746" />
+              <RiskSummaryCard label="No current risk signal" value={data.totals.noCurrentRisk} color="#555555" />
+            </div>
+            <p style={riskSummaryNoteStyle}>
+              Risk exposure is assessed separately from strategic value. These bands cover all
+              currently assessed sites; they do not represent a prediction of site loss.
+            </p>
           </div>
         </section>
 
@@ -491,7 +510,7 @@ export default function BoroughsPage() {
                     </th>
 
                     <th style={headerStyle}>
-                      High risk
+                       Risk exposure
                     </th>
 
                     <th style={headerStyle}>
@@ -509,7 +528,8 @@ export default function BoroughsPage() {
                     </th>
 
                     <th style={headerStyle}>
-                      Scored RF6
+                       Planning pressure
+                       contribution
                     </th>
 
                     <th style={headerStyle}>
@@ -588,7 +608,7 @@ export default function BoroughsPage() {
 
             <InterpretationItem
               title="Planning evidence"
-              text="Planning evidence identified for assessment or review. This does not by itself indicate a confirmed threat."
+              text="Records identified for assessment or review. Only a smaller subset contributes to the scored planning pressure criterion; neither is automatically a confirmed threat."
             />
           </div>
         </section>
@@ -660,6 +680,23 @@ function MetricCard({
         {description}
       </p>
     </article>
+  );
+}
+
+function RiskSummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={riskSummaryCardStyle}>
+      <div style={{ ...riskSummaryValueStyle, color }}>{formatNumber(value)}</div>
+      <div style={riskSummaryLabelStyle}>{label}</div>
+    </div>
+  );
+}
+
+function RiskCount({ label, count, tone, bg }: { label: string; count: number; tone: string; bg: string }) {
+  return (
+    <span title={`${label}: ${count} sites`} style={{ ...riskCountStyle, background: bg, color: tone }}>
+      {label}: {formatNumber(count)}
+    </span>
   );
 }
 
@@ -749,19 +786,13 @@ function BoroughRow({
         </div>
       </td>
 
-      <td style={numberCellStyle}>
-        {borough.high_risk_count >
-        0 ? (
-          <span style={highRiskBadgeStyle}>
-            {
-              borough.high_risk_count
-            }
-          </span>
-        ) : (
-          <span style={zeroStyle}>
-            0
-          </span>
-        )}
+      <td style={riskCellStyle}>
+        <div style={riskCountsStyle}>
+          <RiskCount label="High" count={borough.high_risk_count} tone="#803600" bg="#ffe5cf" />
+          <RiskCount label="Medium" count={borough.medium_risk_count} tone="#665100" bg="#fff2c7" />
+          <RiskCount label="Low" count={borough.low_risk_count} tone="#365746" bg="#e7efea" />
+          <RiskCount label="No signal" count={borough.no_current_risk_count} tone="#555" bg="#eceae7" />
+        </div>
       </td>
 
       <td style={numberCellStyle}>
@@ -888,6 +919,38 @@ function formatNumber(
 /* =========================================================
    STYLES
    ========================================================= */
+
+const riskSummaryWrapStyle: React.CSSProperties = {
+  marginTop: "24px",
+};
+const riskSummaryTitleStyle: React.CSSProperties = {
+  fontSize: "17px", fontWeight: 850, marginBottom: "12px", color: "#252525",
+};
+const riskSummaryGridStyle: React.CSSProperties = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))", gap: "12px",
+};
+const riskSummaryCardStyle: React.CSSProperties = {
+  padding: "17px 19px", background: "#fff", border: "1px solid #e2ded9", borderRadius: "12px",
+};
+const riskSummaryValueStyle: React.CSSProperties = {
+  fontSize: "27px", fontWeight: 900, letterSpacing: "-0.03em",
+};
+const riskSummaryLabelStyle: React.CSSProperties = {
+  fontSize: "12px", fontWeight: 750, marginTop: "3px", color: "#555",
+};
+const riskSummaryNoteStyle: React.CSSProperties = {
+  fontSize: "12px", lineHeight: 1.6, color: "#666", margin: "12px 0 0",
+};
+const riskCellStyle: React.CSSProperties = {
+  padding: "11px 12px", borderBottom: "1px solid #eeeae6", minWidth: "205px",
+};
+const riskCountsStyle: React.CSSProperties = {
+  display: "grid", gridTemplateColumns: "repeat(2, max-content)", gap: "5px",
+};
+const riskCountStyle: React.CSSProperties = {
+  display: "inline-flex", padding: "5px 7px", borderRadius: "6px", fontSize: "10px",
+  fontWeight: 800, whiteSpace: "nowrap",
+};
 
 const pageStyle: React.CSSProperties = {
   maxWidth: "1440px",
@@ -1101,7 +1164,7 @@ const tableScrollStyle: React.CSSProperties = {
 
 const tableStyle: React.CSSProperties = {
   width: "100%",
-  minWidth: "1180px",
+  minWidth: "1330px",
   borderCollapse: "collapse",
 };
 
