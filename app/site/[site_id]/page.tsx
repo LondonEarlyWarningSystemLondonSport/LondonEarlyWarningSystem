@@ -13,67 +13,71 @@ type TabKey =
   | "facilities"
   | "evidence";
 
+type NumericValue = number | string | null;
+type FlagValue = string | number | boolean | null;
+
 type SiteDetail = {
   site_id: string | number | null;
   site_name: string | null;
   postcode: string | null;
   borough: string | null;
-  latitude: number | null;
-  longitude: number | null;
+  latitude: NumericValue;
+  longitude: NumericValue;
+
   playing_field_status: string | null;
   priority_category: string | null;
-  priority_sort_order: number | null;
-  strategic_value_score: number | null;
+  priority_sort_order: NumericValue;
+
+  strategic_value_score: NumericValue;
   strategic_value_band: string | null;
-  risk_exposure_score: number | null;
+  risk_exposure_score: NumericValue;
   risk_band: string | null;
-  risk_band_sort_order: number | null;
+  risk_band_sort_order: NumericValue;
 
-  sv1_multi_pitch_scale_score: number | null;
-  sv2_full_size_3g_score: number | null;
-  sv3_strategic_sport_score: number | null;
-  sv4_share_of_borough_provision_score: number | null;
-  sv5_inner_london_score: number | null;
-  sv6_deprivation_score: number | null;
+  sv1_multi_pitch_scale_score: NumericValue;
+  sv2_full_size_3g_score: NumericValue;
+  sv3_strategic_sport_score: NumericValue;
+  sv4_share_of_borough_provision_score: NumericValue;
+  sv5_inner_london_score: NumericValue;
+  sv6_deprivation_score: NumericValue;
 
-  adult_football_rugby_pitch_units: number | null;
-  rugby_pitch_units: number | null;
-  cricket_pitch_units: number | null;
-  other_strategic_grass_pitch_units: number | null;
-  full_size_3g_pitch_units: number | null;
-  hockey_agp_pitch_units: number | null;
+  adult_football_rugby_pitch_units: NumericValue;
+  rugby_pitch_units: NumericValue;
+  cricket_pitch_units: NumericValue;
+  other_strategic_grass_pitch_units: NumericValue;
+  full_size_3g_pitch_units: NumericValue;
+  hockey_agp_pitch_units: NumericValue;
 
   owner_type: string | null;
   management_type: string | null;
 
-  rf1_ownership_exposure_score: number | null;
-  rf2_management_exposure_score: number | null;
-  rf3_pps_at_risk_score: number | null;
-  rf6_planning_pressure_score: number | null;
+  rf1_ownership_exposure_score: NumericValue;
+  rf2_management_exposure_score: NumericValue;
+  rf3_pps_at_risk_score: NumericValue;
+  rf6_planning_pressure_score: NumericValue;
 
-  pps_critical_site_flag: string | null;
-  pps_community_use_flag: string | null;
+  pps_critical_site_flag: FlagValue;
+  pps_community_use_flag: FlagValue;
   pps_security_of_tenure: string | null;
   pps_ownership_type: string | null;
   pps_management_type: string | null;
 
-  planning_candidate_application_count: number | null;
-  confirmed_rf6_application_count: number | null;
-  nearest_planning_candidate_distance_metres: number | null;
+  planning_candidate_application_count: NumericValue;
+  confirmed_rf6_application_count: NumericValue;
+  nearest_planning_candidate_distance_metres: NumericValue;
 
-  // Optional because this property is not yet confirmed
-  // in the Site Detail API response.
-  planning_review_required?: string | null;
+  planning_review_required?: FlagValue;
 
   rf6_scoring_status: string | null;
   rf6_scoring_note: string | null;
   review_reason: string | null;
-  possible_3g_data_quality_flag: string | null;
-  sv4_single_recorded_provision_flag: string | null;
+
+  possible_3g_data_quality_flag: FlagValue;
+  sv4_single_recorded_provision_flag: FlagValue;
   sv4_review_note: string | null;
-  missing_imd_flag: string | null;
-  missing_owner_flag: string | null;
-  missing_management_flag: string | null;
+  missing_imd_flag: FlagValue;
+  missing_owner_flag: FlagValue;
+  missing_management_flag: FlagValue;
 
   phase1_3_scope_tag: string | null;
   phase1_3_source_note: string | null;
@@ -153,28 +157,101 @@ const darkBandStyle: CSSProperties = {
   borderRadius: 14,
 };
 
-function isYes(value?: string | null) {
-  return value?.trim().toLowerCase() === "yes";
+// ---------------------------------------------------------
+// SAFE DATA HELPERS
+// ---------------------------------------------------------
+
+function isYes(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalised = value.trim().toLowerCase();
+
+    return (
+      normalised === "yes" ||
+      normalised === "true" ||
+      normalised === "1"
+    );
+  }
+
+  return false;
 }
 
-function formatNumber(value: number | null | undefined) {
+function safeText(value: unknown): string {
   if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  return "";
+}
+
+function displayText(value: unknown): string {
+  const text = safeText(value);
+
+  return text || "Not recorded";
+}
+
+function numericValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (typeof value === "boolean") {
+    return null;
+  }
+
+  const result = Number(value);
+
+  return Number.isFinite(result) ? result : null;
+}
+
+function numericOrZero(value: unknown): number {
+  return numericValue(value) ?? 0;
+}
+
+function formatNumber(value: unknown): string {
+  const number = numericValue(value);
+
+  if (number === null) {
     return "Not recorded";
   }
 
-  return Number(value).toLocaleString("en-GB");
+  return number.toLocaleString("en-GB");
 }
 
-function formatDistance(value: number | null) {
-  if (value === null || value === undefined) {
+function formatDistance(value: unknown): string {
+  const metres = numericValue(value);
+
+  if (metres === null) {
     return "Not recorded";
   }
 
-  if (value < 1000) {
-    return `${Math.round(value)} m`;
+  if (metres < 1000) {
+    return `${Math.round(metres)} m`;
   }
 
-  return `${(value / 1000).toFixed(1)} km`;
+  return `${(metres / 1000).toFixed(1)} km`;
 }
 
 function normaliseSiteResponse(raw: unknown): SiteDetail | null {
@@ -182,39 +259,58 @@ function normaliseSiteResponse(raw: unknown): SiteDetail | null {
     return null;
   }
 
-  const result = raw as {
+  const response = raw as {
     success?: boolean;
-    site?: SiteDetail;
-    data?: SiteDetail;
-    site_id?: string | number | null;
-    error?: string;
+    site?: unknown;
+    data?: unknown;
+    site_id?: unknown;
   };
 
-  if (result.success === false) {
+  if (response.success === false) {
     return null;
   }
 
-  if (result.site?.site_id != null) {
-    return result.site;
-  }
+  const candidates = [
+    response.site,
+    response.data,
+    raw,
+  ];
 
-  if (result.data?.site_id != null) {
-    return result.data;
-  }
-
-  if (result.site_id != null) {
-    return raw as SiteDetail;
+  for (const candidate of candidates) {
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      "site_id" in candidate &&
+      candidate.site_id !== null &&
+      candidate.site_id !== undefined
+    ) {
+      return candidate as SiteDetail;
+    }
   }
 
   return null;
 }
 
-function getPlanningState(site: SiteDetail): PlanningState {
-  const score = site.rf6_planning_pressure_score ?? 0;
-  const confirmed = site.confirmed_rf6_application_count ?? 0;
-  const candidates = site.planning_candidate_application_count ?? 0;
+// ---------------------------------------------------------
+// PLANNING EVIDENCE
+// ---------------------------------------------------------
 
-  const status = (site.rf6_scoring_status || "").toLowerCase();
+function getPlanningState(site: SiteDetail): PlanningState {
+  const score = numericOrZero(
+    site.rf6_planning_pressure_score
+  );
+
+  const confirmed = numericOrZero(
+    site.confirmed_rf6_application_count
+  );
+
+  const candidates = numericOrZero(
+    site.planning_candidate_application_count
+  );
+
+  const status = safeText(
+    site.rf6_scoring_status
+  ).toLowerCase();
 
   const contributed =
     score > 0 ||
@@ -229,7 +325,8 @@ function getPlanningState(site: SiteDetail): PlanningState {
   if (contributed) {
     return {
       shortLabel: "Contributes",
-      label: "Planning evidence contributes to Planning Pressure",
+      label:
+        "Planning evidence contributes to Planning Pressure",
       description:
         "Site-linked planning evidence has met the applicable assessment rules and contributes to this site's Risk Exposure. This is an early-warning signal, not confirmation that the site will be lost or developed.",
       supporting:
@@ -250,7 +347,8 @@ function getPlanningState(site: SiteDetail): PlanningState {
   if (reviewOnly) {
     return {
       shortLabel: "Review only",
-      label: "Planning evidence retained for review",
+      label:
+        "Planning evidence retained for review",
       description:
         "Potentially relevant planning evidence has been identified, but it does not currently contribute directly to the Planning Pressure assessment.",
       supporting:
@@ -279,6 +377,10 @@ function getPlanningState(site: SiteDetail): PlanningState {
     text: "#555555",
   };
 }
+
+// ---------------------------------------------------------
+// QUALITY AND ASSESSMENT HELPERS
+// ---------------------------------------------------------
 
 function getQualityIssues(site: SiteDetail): Issue[] {
   const issues: Issue[] = [];
@@ -323,11 +425,11 @@ function getQualityIssues(site: SiteDetail): Issue[] {
     });
   }
 
-  if (site.review_reason?.trim()) {
+  if (safeText(site.review_reason)) {
     issues.push({
       title: "Additional manual review",
       text:
-        "This site has an additional review reason recorded in the assessment data. Further evidence checking may be required.",
+        "An additional review reason is recorded for this site. Further evidence checking may be required.",
     });
   }
 
@@ -355,22 +457,24 @@ function getOutcomeDescription(priority: string | null) {
       return "The site remains in the assessed population without a current priority or review outcome.";
 
     default:
-      return "The outcome is determined from the Risk Exposure and Strategic Value bands.";
+      return "The outcome is determined by combining Risk Exposure and Strategic Value.";
   }
 }
 
-function getKnownRiskEvidence(site: SiteDetail) {
-  if ((site.rf3_pps_at_risk_score ?? 0) > 0) {
+function getKnownRiskEvidence(site: SiteDetail): string {
+  if (numericOrZero(site.rf3_pps_at_risk_score) > 0) {
     return "Known at-risk evidence contributes to Risk Exposure";
   }
 
   return "No scored known at-risk evidence";
 }
 
-function getMultiPitchEvidence(site: SiteDetail) {
-  const count = site.adult_football_rugby_pitch_units;
+function getMultiPitchEvidence(site: SiteDetail): string {
+  const count = numericValue(
+    site.adult_football_rugby_pitch_units
+  );
 
-  if (count == null) {
+  if (count === null) {
     return "Pitch units not recorded";
   }
 
@@ -379,31 +483,40 @@ function getMultiPitchEvidence(site: SiteDetail) {
   }`;
 }
 
-function getStrategicSportEvidence(site: SiteDetail) {
+function getStrategicSportEvidence(site: SiteDetail): string {
   const parts: string[] = [];
 
-  if ((site.rugby_pitch_units ?? 0) > 0) {
-    parts.push(`${site.rugby_pitch_units} rugby`);
+  const rugby = numericOrZero(site.rugby_pitch_units);
+  const cricket = numericOrZero(site.cricket_pitch_units);
+  const hockey = numericOrZero(site.hockey_agp_pitch_units);
+  const other = numericOrZero(
+    site.other_strategic_grass_pitch_units
+  );
+
+  if (rugby > 0) {
+    parts.push(`${rugby} rugby`);
   }
 
-  if ((site.cricket_pitch_units ?? 0) > 0) {
-    parts.push(`${site.cricket_pitch_units} cricket`);
+  if (cricket > 0) {
+    parts.push(`${cricket} cricket`);
   }
 
-  if ((site.hockey_agp_pitch_units ?? 0) > 0) {
-    parts.push(`${site.hockey_agp_pitch_units} hockey`);
+  if (hockey > 0) {
+    parts.push(`${hockey} hockey`);
   }
 
-  if ((site.other_strategic_grass_pitch_units ?? 0) > 0) {
-    parts.push(
-      `${site.other_strategic_grass_pitch_units} other strategic grass`
-    );
+  if (other > 0) {
+    parts.push(`${other} other strategic grass`);
   }
 
   return parts.length
     ? parts.join(" · ")
     : "No strategic sport pitch units recorded";
 }
+
+// ---------------------------------------------------------
+// SHARED PRESENTATION COMPONENTS
+// ---------------------------------------------------------
 
 function SectionHeading({
   eyebrow,
@@ -593,11 +706,13 @@ function AssessmentCriterion({
   description,
 }: {
   title: string;
-  score: number | null;
+  score: NumericValue;
   maxScore: number;
   evidence: string;
   description: string;
 }) {
+  const actualScore = numericValue(score);
+
   return (
     <article style={cardStyle}>
       <div
@@ -629,7 +744,7 @@ function AssessmentCriterion({
             whiteSpace: "nowrap",
           }}
         >
-          {score ?? "—"} / {maxScore}
+          {actualScore ?? "—"} / {maxScore}
         </span>
       </div>
 
@@ -795,6 +910,10 @@ function MethodologyCallout() {
   );
 }
 
+// ---------------------------------------------------------
+// SUMMARY TAB
+// ---------------------------------------------------------
+
 function SummaryTab({
   site,
   planning,
@@ -847,7 +966,7 @@ function SummaryTab({
                 marginTop: 9,
               }}
             >
-              {site.risk_band || "Not recorded"}
+              {displayText(site.risk_band)}
             </div>
 
             <div
@@ -857,7 +976,7 @@ function SummaryTab({
                 marginTop: 3,
               }}
             >
-              Score {site.risk_exposure_score ?? "—"}
+              Score {numericValue(site.risk_exposure_score) ?? "—"}
             </div>
 
             <p
@@ -867,8 +986,8 @@ function SummaryTab({
                 color: MUTED,
               }}
             >
-              Ownership, management, known at-risk
-              evidence and planning pressure.
+              Ownership, management, known at-risk evidence
+              and planning pressure.
             </p>
 
             <strong style={{ fontSize: 11 }}>
@@ -890,7 +1009,7 @@ function SummaryTab({
                 marginTop: 9,
               }}
             >
-              {site.strategic_value_band || "Not recorded"}
+              {displayText(site.strategic_value_band)}
             </div>
 
             <div
@@ -900,7 +1019,7 @@ function SummaryTab({
                 marginTop: 3,
               }}
             >
-              Score {site.strategic_value_score ?? "—"} / 15
+              Score {numericValue(site.strategic_value_score) ?? "—"} / 15
             </div>
 
             <p
@@ -943,7 +1062,7 @@ function SummaryTab({
                 marginTop: 9,
               }}
             >
-              {site.priority_category || "Not assigned"}
+              {displayText(site.priority_category)}
             </div>
 
             <p
@@ -969,19 +1088,19 @@ function SummaryTab({
         <div style={gridStyle}>
           <InfoCard
             title="Playing-field status"
-            value={site.playing_field_status || "Not recorded"}
+            value={displayText(site.playing_field_status)}
             text="Status recorded in the assessed playing-field evidence."
           />
 
           <InfoCard
             title="Ownership"
-            value={site.owner_type || "Not recorded"}
+            value={displayText(site.owner_type)}
             text="Ownership classification used in the Risk Exposure assessment."
           />
 
           <InfoCard
             title="Management"
-            value={site.management_type || "Not recorded"}
+            value={displayText(site.management_type)}
             text="Management classification used in the Risk Exposure assessment."
           />
 
@@ -1014,6 +1133,10 @@ function SummaryTab({
   );
 }
 
+// ---------------------------------------------------------
+// RISK AND PLANNING TAB
+// ---------------------------------------------------------
+
 function RiskTab({
   site,
   planning,
@@ -1043,7 +1166,7 @@ function RiskTab({
                 marginTop: 5,
               }}
             >
-              {site.risk_band || "Not recorded"}
+              {displayText(site.risk_band)}
             </div>
           </div>
 
@@ -1059,7 +1182,7 @@ function RiskTab({
                 marginTop: 5,
               }}
             >
-              {site.risk_exposure_score ?? "—"}
+              {numericValue(site.risk_exposure_score) ?? "—"}
             </div>
           </div>
         </div>
@@ -1069,7 +1192,7 @@ function RiskTab({
             title="Ownership exposure"
             score={site.rf1_ownership_exposure_score}
             maxScore={2}
-            evidence={site.owner_type || "Ownership not recorded"}
+            evidence={displayText(site.owner_type)}
             description="Assesses exposure associated with current ownership arrangements."
           />
 
@@ -1077,7 +1200,7 @@ function RiskTab({
             title="Management exposure"
             score={site.rf2_management_exposure_score}
             maxScore={2}
-            evidence={site.management_type || "Management not recorded"}
+            evidence={displayText(site.management_type)}
             description="Assesses exposure associated with current management arrangements."
           />
 
@@ -1182,12 +1305,16 @@ function RiskTab({
           >
             <MetricBox
               label="Candidate applications identified"
-              value={site.planning_candidate_application_count ?? 0}
+              value={numericOrZero(
+                site.planning_candidate_application_count
+              )}
             />
 
             <MetricBox
               label="Applications contributing to assessment"
-              value={site.confirmed_rf6_application_count ?? 0}
+              value={numericOrZero(
+                site.confirmed_rf6_application_count
+              )}
             />
 
             <MetricBox
@@ -1210,19 +1337,19 @@ function RiskTab({
         <div style={gridStyle}>
           <InfoCard
             title="Critical-site flag"
-            value={site.pps_critical_site_flag || "Not recorded"}
+            value={displayText(site.pps_critical_site_flag)}
             text="Critical-site designation recorded in the linked Playing Pitch Strategy."
           />
 
           <InfoCard
             title="Community use"
-            value={site.pps_community_use_flag || "Not recorded"}
+            value={displayText(site.pps_community_use_flag)}
             text="Community-use information recorded in linked PPS evidence."
           />
 
           <InfoCard
             title="Security of tenure"
-            value={site.pps_security_of_tenure || "Not recorded"}
+            value={displayText(site.pps_security_of_tenure)}
             text="Tenure information available from linked PPS evidence."
           />
 
@@ -1230,8 +1357,8 @@ function RiskTab({
             title="PPS ownership and management"
             value={
               [
-                site.pps_ownership_type,
-                site.pps_management_type,
+                safeText(site.pps_ownership_type),
+                safeText(site.pps_management_type),
               ]
                 .filter(Boolean)
                 .join(" / ") || "Not recorded"
@@ -1245,6 +1372,10 @@ function RiskTab({
     </>
   );
 }
+
+// ---------------------------------------------------------
+// STRATEGIC VALUE TAB
+// ---------------------------------------------------------
 
 function StrategicTab({ site }: { site: SiteDetail }) {
   const criteria = [
@@ -1261,9 +1392,11 @@ function StrategicTab({ site }: { site: SiteDetail }) {
       score: site.sv2_full_size_3g_score,
       max: 3,
       evidence:
-        site.full_size_3g_pitch_units == null
+        numericValue(site.full_size_3g_pitch_units) === null
           ? "Provision not recorded"
-          : `${site.full_size_3g_pitch_units} full-size 3G pitch units`,
+          : `${formatNumber(
+              site.full_size_3g_pitch_units
+            )} full-size 3G pitch units`,
       description:
         "Recognises confirmed full-size third-generation artificial grass pitch provision.",
     },
@@ -1290,9 +1423,9 @@ function StrategicTab({ site }: { site: SiteDetail }) {
       score: site.sv5_inner_london_score,
       max: 2,
       evidence:
-        site.sv5_inner_london_score == null
+        numericValue(site.sv5_inner_london_score) === null
           ? "Not recorded"
-          : site.sv5_inner_london_score === 2
+          : numericOrZero(site.sv5_inner_london_score) === 2
           ? "Inner London weighting applied"
           : "Inner London weighting not applied",
       description:
@@ -1332,7 +1465,7 @@ function StrategicTab({ site }: { site: SiteDetail }) {
                 fontWeight: 900,
               }}
             >
-              {site.strategic_value_band || "Not recorded"}
+              {displayText(site.strategic_value_band)}
             </div>
           </div>
 
@@ -1348,7 +1481,8 @@ function StrategicTab({ site }: { site: SiteDetail }) {
                 fontWeight: 900,
               }}
             >
-              {site.strategic_value_score ?? "—"}
+              {numericValue(site.strategic_value_score) ?? "—"}
+
               <span
                 style={{
                   color: "#aaa",
@@ -1419,6 +1553,10 @@ function StrategicTab({ site }: { site: SiteDetail }) {
   );
 }
 
+// ---------------------------------------------------------
+// FACILITIES TAB
+// ---------------------------------------------------------
+
 function FacilitiesTab({ site }: { site: SiteDetail }) {
   const facilities = [
     {
@@ -1465,7 +1603,7 @@ function FacilitiesTab({ site }: { site: SiteDetail }) {
                   fontWeight: 900,
                 }}
               >
-                {facility.value == null
+                {numericValue(facility.value) === null
                   ? "—"
                   : formatNumber(facility.value)}
               </div>
@@ -1495,25 +1633,25 @@ function FacilitiesTab({ site }: { site: SiteDetail }) {
         <div style={gridStyle}>
           <InfoCard
             title="Playing-field status"
-            value={site.playing_field_status || "Not recorded"}
+            value={displayText(site.playing_field_status)}
             text="Current status in the assessment data."
           />
 
           <InfoCard
             title="Owner"
-            value={site.owner_type || "Not recorded"}
+            value={displayText(site.owner_type)}
             text="Recorded ownership classification."
           />
 
           <InfoCard
             title="Management"
-            value={site.management_type || "Not recorded"}
+            value={displayText(site.management_type)}
             text="Recorded management classification."
           />
 
           <InfoCard
             title="Borough"
-            value={site.borough || "Not recorded"}
+            value={displayText(site.borough)}
             text="Borough used for local provision comparisons."
           />
         </div>
@@ -1521,6 +1659,10 @@ function FacilitiesTab({ site }: { site: SiteDetail }) {
     </>
   );
 }
+
+// ---------------------------------------------------------
+// EVIDENCE AND QUALITY TAB
+// ---------------------------------------------------------
 
 function EvidenceTab({
   site,
@@ -1556,6 +1698,9 @@ function EvidenceTab({
     ],
   ];
 
+  const latitude = numericValue(site.latitude);
+  const longitude = numericValue(site.longitude);
+
   return (
     <>
       <section style={sectionStyle}>
@@ -1565,7 +1710,7 @@ function EvidenceTab({
           description="Missing, incomplete or uncertain information is surfaced rather than treated as confirmed evidence."
         />
 
-        {issues.length ? (
+        {issues.length > 0 ? (
           <div style={gridStyle}>
             {issues.map((issue, index) => (
               <IssueCard key={index} issue={issue} />
@@ -1607,7 +1752,7 @@ function EvidenceTab({
         />
 
         <div style={gridStyle}>
-          {sources.map(([title, text]) => (
+          {sources.map(([title, description]) => (
             <article
               key={title}
               style={{
@@ -1632,7 +1777,7 @@ function EvidenceTab({
                   color: MUTED,
                 }}
               >
-                {text}
+                {description}
               </p>
             </article>
           ))}
@@ -1649,31 +1794,27 @@ function EvidenceTab({
         <div style={gridStyle}>
           <InfoCard
             title="Site ID"
-            value={
-              site.site_id == null
-                ? "Not recorded"
-                : String(site.site_id)
-            }
+            value={displayText(site.site_id)}
             text="Current assessed-site identifier."
           />
 
           <InfoCard
             title="Postcode"
-            value={site.postcode || "Not recorded"}
+            value={displayText(site.postcode)}
             text="Postcode associated with the site."
           />
 
           <InfoCard
             title="Borough"
-            value={site.borough || "Not recorded"}
+            value={displayText(site.borough)}
             text="Borough associated with the site."
           />
 
           <InfoCard
             title="Coordinates"
             value={
-              site.latitude != null && site.longitude != null
-                ? `${site.latitude}, ${site.longitude}`
+              latitude !== null && longitude !== null
+                ? `${latitude}, ${longitude}`
                 : "Not recorded"
             }
             text="Coordinates recorded in the site evidence."
@@ -1685,6 +1826,10 @@ function EvidenceTab({
     </>
   );
 }
+
+// ---------------------------------------------------------
+// MAIN PAGE
+// ---------------------------------------------------------
 
 export default function SiteDetailPage() {
   const params = useParams();
@@ -1698,7 +1843,8 @@ export default function SiteDetailPage() {
   const [site, setSite] = useState<SiteDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("summary");
+  const [activeTab, setActiveTab] =
+    useState<TabKey>("summary");
 
   useEffect(() => {
     if (!siteId) {
@@ -1717,16 +1863,21 @@ export default function SiteDetailPage() {
 
         const response = await fetch(
           `/api/sites/${encodeURIComponent(siteId)}`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+          }
         );
 
         const raw: unknown = await response.json();
 
         if (!response.ok) {
-          const result = raw as { error?: string };
+          const result = raw as {
+            error?: string;
+          };
 
           throw new Error(
-            result.error || "Unable to load the site assessment."
+            result.error ||
+              "Unable to load the site assessment."
           );
         }
 
@@ -1762,10 +1913,13 @@ export default function SiteDetailPage() {
     };
   }, [siteId]);
 
-  const issues = useMemo(
-    () => (site ? getQualityIssues(site) : []),
-    [site]
-  );
+  const issues = useMemo(() => {
+    if (!site) {
+      return [];
+    }
+
+    return getQualityIssues(site);
+  }, [site]);
 
   if (loading) {
     return (
@@ -1773,6 +1927,7 @@ export default function SiteDetailPage() {
         <main style={pageStyle}>
           <article style={cardStyle}>
             <h2>Loading site assessment</h2>
+
             <p style={{ color: MUTED }}>
               Retrieving the latest site-level evidence.
             </p>
@@ -1808,12 +1963,30 @@ export default function SiteDetailPage() {
 
   const planning = getPlanningState(site);
 
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: "summary", label: "Summary" },
-    { key: "risk", label: "Risk & Planning" },
-    { key: "strategic", label: "Strategic Value" },
-    { key: "facilities", label: "Facilities" },
-    { key: "evidence", label: "Evidence & Quality" },
+  const tabs: {
+    key: TabKey;
+    label: string;
+  }[] = [
+    {
+      key: "summary",
+      label: "Summary",
+    },
+    {
+      key: "risk",
+      label: "Risk & Planning",
+    },
+    {
+      key: "strategic",
+      label: "Strategic Value",
+    },
+    {
+      key: "facilities",
+      label: "Facilities",
+    },
+    {
+      key: "evidence",
+      label: "Evidence & Quality",
+    },
   ];
 
   return (
@@ -1861,14 +2034,19 @@ export default function SiteDetailPage() {
               gap: 26,
             }}
           >
-            <div style={{ flex: "1 1 450px", minWidth: 0 }}>
+            <div
+              style={{
+                flex: "1 1 450px",
+                minWidth: 0,
+              }}
+            >
               <div
                 style={{
                   ...eyebrowStyle,
                   color: "#ef555b",
                 }}
               >
-                {site.borough || "London"}
+                {displayText(site.borough)}
               </div>
 
               <h1
@@ -1881,7 +2059,7 @@ export default function SiteDetailPage() {
                   overflowWrap: "anywhere",
                 }}
               >
-                {site.site_name || "Unnamed site"}
+                {displayText(site.site_name)}
               </h1>
 
               <div
@@ -1892,8 +2070,8 @@ export default function SiteDetailPage() {
                 }}
               >
                 {[
-                  site.postcode,
-                  site.playing_field_status,
+                  safeText(site.postcode),
+                  safeText(site.playing_field_status),
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -1925,7 +2103,7 @@ export default function SiteDetailPage() {
                   fontSize: 21,
                 }}
               >
-                {site.priority_category || "Not assigned"}
+                {displayText(site.priority_category)}
               </div>
             </div>
           </div>
@@ -1941,20 +2119,24 @@ export default function SiteDetailPage() {
           >
             <HeroMetric
               label="Risk Exposure"
-              value={site.risk_band || "Not recorded"}
+              value={displayText(site.risk_band)}
               supporting={
-                site.risk_exposure_score != null
-                  ? `Score ${site.risk_exposure_score}`
+                numericValue(site.risk_exposure_score) !== null
+                  ? `Score ${formatNumber(
+                      site.risk_exposure_score
+                    )}`
                   : undefined
               }
             />
 
             <HeroMetric
               label="Strategic Value"
-              value={site.strategic_value_band || "Not recorded"}
+              value={displayText(site.strategic_value_band)}
               supporting={
-                site.strategic_value_score != null
-                  ? `Score ${site.strategic_value_score} / 15`
+                numericValue(site.strategic_value_score) !== null
+                  ? `Score ${formatNumber(
+                      site.strategic_value_score
+                    )} / 15`
                   : undefined
               }
             />
@@ -1968,14 +2150,16 @@ export default function SiteDetailPage() {
             <HeroMetric
               label="Evidence review"
               value={
-                issues.length
+                issues.length > 0
                   ? "Review flagged"
                   : "No additional flag"
               }
               supporting={
-                issues.length
+                issues.length > 0
                   ? `${issues.length} review ${
-                      issues.length === 1 ? "item" : "items"
+                      issues.length === 1
+                        ? "item"
+                        : "items"
                     }`
                   : undefined
               }
@@ -2018,7 +2202,10 @@ export default function SiteDetailPage() {
         )}
 
         {activeTab === "risk" && (
-          <RiskTab site={site} planning={planning} />
+          <RiskTab
+            site={site}
+            planning={planning}
+          />
         )}
 
         {activeTab === "strategic" && (
@@ -2030,7 +2217,10 @@ export default function SiteDetailPage() {
         )}
 
         {activeTab === "evidence" && (
-          <EvidenceTab site={site} issues={issues} />
+          <EvidenceTab
+            site={site}
+            issues={issues}
+          />
         )}
       </main>
     </AppShell>
