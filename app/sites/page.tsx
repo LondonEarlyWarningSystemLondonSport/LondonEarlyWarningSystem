@@ -1,1229 +1,295 @@
 "use client";
 
-import {
-  Suspense,
-  useEffect,
-  useState,
-} from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "../../components/AppShell";
 
-type SiteSummary = {
-  site_id: number;
+type Flag = string | number | boolean | null | undefined;
+type Value = number | string | null | undefined;
+type Site = {
+  site_id: number | string;
   site_name: string;
   postcode: string | null;
   borough: string;
   priority_category: string;
-  strategic_value_score: number | null;
+  strategic_value_score: Value;
   strategic_value_band: string | null;
-  risk_exposure_score: number | null;
+  risk_exposure_score: Value;
   risk_band: string;
-  planning_candidate_count: number | null;
-  confirmed_planning_count: number | null;
-  planning_review_required: string | null;
-  planning_contributed_to_score?: string | null;
-  known_at_risk?: string | null;
-  review_required: string | null;
+  planning_candidate_count: Value;
+  confirmed_planning_count: Value;
+  planning_review_required?: Flag;
+  planning_contributed_to_score?: Flag;
 };
-
-type SitesApiResponse = {
+type ApiResult = {
   success: boolean;
-
-  page?: {
-    pageSize: number;
-    returned: number;
-    hasNextPage: boolean;
-    endCursor: string | null;
-    nextPage: string | null;
-  };
-
-  filters?: {
-    borough: string | null;
-    priority: string | null;
-    risk: string | null;
-    search: string | null;
-  };
-
-  sites?: SiteSummary[];
+  sites?: Site[];
+  page?: { nextPage?: string | null; hasNextPage?: boolean };
   error?: string;
 };
 
-type PriorityTab = {
-  label: string;
-  value: string;
-  description: string;
+type Priority = { value: string; description: string };
+const priorities: Priority[] = [
+  { value: "", description: "Explore the current London playing-field assessment." },
+  { value: "Priority A", description: "High Risk Exposure combined with high or medium Strategic Value." },
+  { value: "Priority B", description: "High Risk Exposure combined with low or not-flagged Strategic Value." },
+  { value: "Priority C", description: "Medium Risk Exposure combined with high or medium Strategic Value." },
+  { value: "Strategic Monitor", description: "High Strategic Value with low or no current risk signal." },
+  { value: "Risk Review", description: "Medium Risk Exposure with low or not-flagged Strategic Value." },
+  { value: "Monitor", description: "Sites retained for monitoring without a current priority or review outcome." },
+];
+
+const boroughs = [
+  "Barking and Dagenham", "Barnet", "Bexley", "Brent", "Bromley", "Camden",
+  "City of London", "Croydon", "Ealing", "Enfield", "Greenwich", "Hackney",
+  "Hammersmith and Fulham", "Haringey", "Harrow", "Havering", "Hillingdon",
+  "Hounslow", "Islington", "Kensington and Chelsea", "Kingston upon Thames",
+  "Lambeth", "Lewisham", "Merton", "Newham", "Redbridge",
+  "Richmond upon Thames", "Southwark", "Sutton", "Tower Hamlets",
+  "Waltham Forest", "Wandsworth", "Westminster",
+];
+
+// Keep the API values unchanged. 'Low' is now included in the selector.
+const risks = ["High", "Medium", "Low", "No current risk signal"];
+const RED = "#e21b23";
+const BLACK = "#171717";
+const BORDER = "#e3dfda";
+const muted: CSSProperties = { color: "#696969", fontSize: 12, lineHeight: 1.5 };
+const input: CSSProperties = {
+  width: "100%", minHeight: 43, boxSizing: "border-box", padding: "10px 12px",
+  border: "1px solid #d6d1ca", borderRadius: 9, background: "white",
+  color: BLACK, fontSize: 12,
 };
 
-const priorityTabs: PriorityTab[] = [
-  {
-    label: "All Sites",
-    value: "",
-    description:
-      "Explore the complete current playing field assessment.",
-  },
-  {
-    label: "Priority A",
-    value: "Priority A",
-    description:
-      "Sites requiring the highest level of current strategic attention.",
-  },
-  {
-    label: "Priority B",
-    value: "Priority B",
-    description:
-      "Sites with significant risk requiring active attention.",
-  },
-  {
-    label: "Priority C",
-    value: "Priority C",
-    description:
-      "Strategically important sites with relevant risk exposure.",
-  },
-  {
-    label: "Strategic Monitor",
-    value: "Strategic Monitor",
-    description:
-      "Strategically important assets that should remain under observation.",
-  },
-  {
-    label: "Risk Review",
-    value: "Risk Review",
-    description:
-      "Sites where risk evidence warrants further review.",
-  },
-  {
-    label: "Monitor",
-    value: "Monitor",
-    description:
-      "Sites retained within the monitoring population without current escalation.",
-  },
-];
-
-const boroughOptions = [
-  "Barking and Dagenham",
-  "Barnet",
-  "Bexley",
-  "Brent",
-  "Bromley",
-  "Camden",
-  "City of London",
-  "Croydon",
-  "Ealing",
-  "Enfield",
-  "Greenwich",
-  "Hackney",
-  "Hammersmith and Fulham",
-  "Haringey",
-  "Harrow",
-  "Havering",
-  "Hillingdon",
-  "Hounslow",
-  "Islington",
-  "Kensington and Chelsea",
-  "Kingston upon Thames",
-  "Lambeth",
-  "Lewisham",
-  "Merton",
-  "Newham",
-  "Redbridge",
-  "Richmond upon Thames",
-  "Southwark",
-  "Sutton",
-  "Tower Hamlets",
-  "Waltham Forest",
-  "Wandsworth",
-  "Westminster",
-];
-
-const riskOptions = [
-  "High",
-  "Medium",
-  "No current risk signal",
-];
-
-export default function SitesPage() {
-  return (
-    <Suspense fallback={<SitesPageLoading />}>
-      <SitesPageContent />
-    </Suspense>
-  );
+function n(value: Value) {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function yes(value: Flag) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value !== "string") return false;
+  return ["yes", "true", "1"].includes(value.trim().toLowerCase());
+}
+function displayNumber(value: Value) {
+  const result = n(value);
+  return result == null ? "—" : result.toLocaleString("en-GB");
+}
+function pill(value: string, kind: "priority" | "risk") {
+  const priorityColors: Record<string, [string, string]> = {
+    "Priority A": ["#202020", "#ffffff"],
+    "Priority B": ["#f2d0d1", "#791f25"],
+    "Priority C": ["#f6ddcd", "#754025"],
+    "Strategic Monitor": ["#dce8ea", "#355c65"],
+    "Risk Review": ["#ece3f2", "#60417b"],
+    Monitor: ["#eeece9", "#555555"],
+  };
+  const riskColors: Record<string, [string, string]> = {
+    High: ["#f6d8d9", "#82252a"],
+    Medium: ["#f8e9ce", "#815415"],
+    Low: ["#e5eaf5", "#385579"],
+    "No current risk signal": ["#e5eee7", "#365746"],
+    "No current risk": ["#e5eee7", "#365746"],
+  };
+  const colors = (kind === "priority" ? priorityColors : riskColors)[value] || ["#eee", "#555"];
+  return <span style={{ display: "inline-block", borderRadius: 30, padding: "6px 10px", background: colors[0], color: colors[1], fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>{value || "Not recorded"}</span>;
+}
+function Planning({ site }: { site: Site }) {
+  const candidates = n(site.planning_candidate_count) ?? 0;
+  const confirmed = n(site.confirmed_planning_count) ?? 0;
+  const contributed = confirmed > 0 || yes(site.planning_contributed_to_score);
+  const forReview = candidates > 0 || yes(site.planning_review_required);
+  if (contributed) {
+    return <div><strong style={{ fontSize: 11, color: "#8a252b" }}>Contributes to Planning Pressure</strong><div style={muted}>{confirmed > 0 ? `${confirmed} contributing ${confirmed === 1 ? "application" : "applications"}` : "Site-linked evidence contributes"}</div>{candidates > 0 && <div style={muted}>{candidates} candidate {candidates === 1 ? "application" : "applications"} identified</div>}</div>;
+  }
+  if (forReview) {
+    return <div><strong style={{ fontSize: 11, color: "#80601a" }}>Retained for review</strong><div style={muted}>{candidates ? `${candidates} candidate ${candidates === 1 ? "application" : "applications"} identified` : "Planning review flag recorded"}</div></div>;
+  }
+  return <span style={muted}>None identified</span>;
 }
 
-function SitesPageLoading() {
-  return (
-    <AppShell>
-      <main style={pageStyle}>
-        <section style={heroStyle}>
-          <div style={heroEyebrowStyle}>
-            London playing field intelligence
-          </div>
-
-          <h1 style={heroTitleStyle}>
-            Explore Sites
-          </h1>
-
-          <p style={heroTextStyle}>
-            Loading the current playing field assessment...
-          </p>
-        </section>
-      </main>
-    </AppShell>
-  );
+function PageLoading() {
+  return <AppShell><main style={{ maxWidth: 1380, padding: "30px 24px", margin: "auto" }}>Loading the current playing-field register…</main></AppShell>;
+}
+export default function SitesPage() {
+  return <Suspense fallback={<PageLoading />}><SitesPageContent /></Suspense>;
 }
 
 function SitesPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-
-  const priorityFromUrl =
-    searchParams.get("priority") || "";
-
-  const [sites, setSites] =
-    useState<SiteSummary[]>([]);
-
-  const [search, setSearch] = useState("");
-  const [borough, setBorough] = useState("");
-  const [priority, setPriority] =
-    useState(priorityFromUrl);
-  const [risk, setRisk] = useState("");
-
-  const [nextPage, setNextPage] =
-    useState<string | null>(null);
-
+  const paramString = searchParams.toString();
+  const priority = searchParams.get("priority") || "";
+  const borough = searchParams.get("borough") || "";
+  const risk = searchParams.get("risk") || "";
+  const submittedSearch = searchParams.get("search") || "";
+  const [searchDraft, setSearchDraft] = useState(submittedSearch);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [nextPage, setNextPage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
+  const morePending = useRef(false);
 
-  const [loadingMore, setLoadingMore] =
-    useState(false);
+  useEffect(() => { setSearchDraft(submittedSearch); }, [submittedSearch]);
 
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const activeTab =
-    priorityTabs.find(
-      (tab) => tab.value === priority
-    ) ?? priorityTabs[0];
-
-  function buildApiUrl(
-    priorityOverride?: string
-  ) {
-    const params = new URLSearchParams();
-
+  // Server-side filtering and cursor pagination are retained from the existing API.
+  useEffect(() => {
+    const version = ++requestVersion.current;
+    const controller = new AbortController();
+    const params = new URLSearchParams(paramString);
+    params.delete("after");
     params.set("pageSize", "25");
+    setLoading(true);
+    setError(null);
+    setSites([]);
+    setNextPage(null);
+    setLoadingMore(false);
+    morePending.current = false;
+    fetch(`/api/sites?${params.toString()}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const json: ApiResult = await response.json();
+        if (!response.ok || !json.success) throw new Error(json.error || "Unable to load sites");
+        return json;
+      })
+      .then((data) => {
+        if (version !== requestVersion.current) return;
+        setSites(data.sites || []);
+        setNextPage(data.page?.nextPage || null);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted || version !== requestVersion.current) return;
+        setError(err instanceof Error ? err.message : "Unable to load sites");
+      })
+      .finally(() => {
+        if (version === requestVersion.current) setLoading(false);
+      });
+    return () => { controller.abort(); };
+  }, [paramString]);
 
-    if (search.trim()) {
-      params.set(
-        "search",
-        search.trim()
-      );
-    }
-
-    if (borough) {
-      params.set("borough", borough);
-    }
-
-    const selectedPriority =
-      priorityOverride !== undefined
-        ? priorityOverride
-        : priority;
-
-    if (selectedPriority) {
-      params.set(
-        "priority",
-        selectedPriority
-      );
-    }
-
-    if (risk) {
-      params.set("risk", risk);
-    }
-
-    return `/api/sites?${params.toString()}`;
+  function updateFilters(changes: Record<string, string>) {
+    const params = new URLSearchParams(paramString);
+    Object.entries(changes).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    });
+    params.delete("after");
+    const query = params.toString();
+    router.replace(query ? `/sites?${query}` : "/sites", { scroll: false });
   }
 
-  async function loadSites(
-    priorityOverride?: string
-  ) {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(
-        buildApiUrl(priorityOverride),
-        {
-          cache: "no-store",
-        }
-      );
-
-      const data: SitesApiResponse =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-        throw new Error(
-          data.error ||
-            "Unable to load sites"
-        );
-      }
-
-      setSites(data.sites || []);
-
-      setNextPage(
-        data.page?.nextPage || null
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load sites"
-      );
-    } finally {
-      setLoading(false);
-    }
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    updateFilters({ search: searchDraft.trim() });
   }
 
   async function loadMore() {
-    if (!nextPage) {
-      return;
-    }
-
+    if (!nextPage || loading || loadingMore || morePending.current) return;
+    const version = requestVersion.current;
+    morePending.current = true;
+    setLoadingMore(true);
+    setError(null);
     try {
-      setLoadingMore(true);
-      setError(null);
-
-      const response = await fetch(
-        nextPage,
-        {
-          cache: "no-store",
-        }
-      );
-
-      const data: SitesApiResponse =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-        throw new Error(
-          data.error ||
-            "Unable to load more sites"
-        );
+      const url = new URL(nextPage, window.location.origin);
+      if (url.origin !== window.location.origin || url.pathname !== "/api/sites") {
+        throw new Error("Unexpected pagination URL");
       }
-
-      setSites((current) => [
-        ...current,
-        ...(data.sites || []),
-      ]);
-
-      setNextPage(
-        data.page?.nextPage || null
-      );
+      const response = await fetch(url.toString(), { cache: "no-store" });
+      const data: ApiResult = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Unable to load more sites");
+      if (version !== requestVersion.current) return;
+      setSites((current) => {
+        const known = new Set(current.map((site) => String(site.site_id)));
+        const extra = (data.sites || []).filter((site) => !known.has(String(site.site_id)));
+        return [...current, ...extra];
+      });
+      setNextPage(data.page?.nextPage || null);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load more sites"
-      );
+      if (version === requestVersion.current) setError(err instanceof Error ? err.message : "Unable to load more sites");
     } finally {
-      setLoadingMore(false);
+      morePending.current = false;
+      if (version === requestVersion.current) setLoadingMore(false);
     }
   }
 
-  useEffect(() => {
-    const urlPriority =
-      searchParams.get("priority") || "";
-
-    setPriority(urlPriority);
-  }, [searchParams]);
-
-  useEffect(() => {
-    loadSites();
-  }, [borough, priority, risk]);
-
-  function handleSearchSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    loadSites();
-  }
-
-  function handlePriorityTab(
-    value: string
-  ) {
-    setPriority(value);
-
-    const params =
-      new URLSearchParams(
-        window.location.search
-      );
-
-    if (value) {
-      params.set(
-        "priority",
-        value
-      );
-    } else {
-      params.delete("priority");
-    }
-
-    const queryString =
-      params.toString();
-
-    const newUrl = queryString
-      ? `/sites?${queryString}`
-      : "/sites";
-
-    window.history.replaceState(
-      {},
-      "",
-      newUrl
-    );
-  }
-
-  function clearFilters() {
-    setSearch("");
-    setBorough("");
-    setPriority("");
-    setRisk("");
-
-    window.location.href = "/sites";
-  }
-
+  const currentPriority = priorities.find((option) => option.value === priority) || priorities[0];
   return (
     <AppShell>
-      <main style={pageStyle}>
-        <section style={heroStyle}>
-          <div style={heroEyebrowStyle}>
-            London playing field intelligence
-          </div>
-
-          <h1 style={heroTitleStyle}>
-            Explore Sites
-          </h1>
-
-          <p style={heroTextStyle}>
-            Explore London&apos;s current playing field
-            assessment by priority, borough and risk.
-            Understand which sites require attention and
-            why.
-          </p>
+      <main style={{ maxWidth: 1440, margin: "auto", padding: "30px 28px 75px" }}>
+        <section style={{ borderRadius: 22, background: BLACK, color: "white", padding: "36px clamp(22px, 4vw, 50px)", marginBottom: 24 }}>
+          <div style={{ color: "#ef555b", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".09em" }}>London playing-field assessment</div>
+          <h1 style={{ fontSize: "clamp(34px, 5vw, 56px)", lineHeight: 1.06, letterSpacing: "-.045em", margin: "8px 0 12px" }}>Explore Sites</h1>
+          <p style={{ color: "#d0d0d0", maxWidth: 760, fontSize: 13, lineHeight: 1.65, margin: 0 }}>Explore current playing fields across London by priority outcome, borough and Risk Exposure. Open a site to see its Strategic Value, Risk & Planning evidence and review information.</p>
         </section>
 
-        <section style={workspaceStyle}>
-          <div style={tabScrollStyle}>
-            <div style={tabsStyle}>
-              {priorityTabs.map((tab) => {
-                const active =
-                  priority === tab.value;
-
-                return (
-                  <button
-                    key={tab.label}
-                    type="button"
-                    onClick={() =>
-                      handlePriorityTab(tab.value)
-                    }
-                    style={{
-                      ...tabStyle,
-                      ...(active
-                        ? activeTabStyle
-                        : {}),
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                );
+        <section style={{ borderRadius: 17, background: "white", border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+          <div style={{ padding: "17px 20px 0", background: "#faf8f5", borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 14 }}>
+              {priorities.map((option) => {
+                const active = priority === option.value;
+                return <button key={option.value} type="button" onClick={() => updateFilters({ priority: option.value })} aria-pressed={active} style={{ whiteSpace: "nowrap", border: active ? `1px solid ${BLACK}` : `1px solid ${BORDER}`, color: active ? "white" : BLACK, background: active ? BLACK : "white", borderRadius: 28, padding: "9px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>{option.value || "All Sites"}</button>;
               })}
             </div>
           </div>
-
-          <div style={tabContextStyle}>
-            <div>
-              <div style={tabContextTitleStyle}>
-                {activeTab.label}
-              </div>
-
-              <div style={tabContextTextStyle}>
-                {activeTab.description}
-              </div>
-            </div>
-
-            {priority && (
-              <PriorityBadge value={priority} />
-            )}
+          <div style={{ padding: "21px 24px 15px", borderBottom: `1px solid ${BORDER}` }}>
+            <strong style={{ fontSize: 18 }}>{currentPriority.value || "All assessed sites"}</strong>
+            <p style={{ ...muted, margin: "5px 0 0" }}>{currentPriority.description}</p>
           </div>
-
-          <form
-            onSubmit={handleSearchSubmit}
-            style={filterPanelStyle}
-          >
-            <div style={filterGridStyle}>
-              <div style={filterFieldStyle}>
-                <label style={labelStyle}>
-                  Search sites
-                </label>
-
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(event.target.value)
-                  }
-                  placeholder="Search by site name"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div style={filterFieldStyle}>
-                <label style={labelStyle}>
-                  Borough
-                </label>
-
-                <select
-                  value={borough}
-                  onChange={(event) =>
-                    setBorough(event.target.value)
-                  }
-                  style={inputStyle}
-                >
-                  <option value="">
-                    All boroughs
-                  </option>
-
-                  {boroughOptions.map((item) => (
-                    <option
-                      key={item}
-                      value={item}
-                    >
-                      {item}
-                    </option>
-                  ))}
+          <form onSubmit={submitSearch} style={{ padding: "20px 24px", background: "#f8f6f3", borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 205px), 1fr))", gap: 12, alignItems: "end" }}>
+              <label style={{ display: "grid", gap: 7, fontSize: 11, fontWeight: 850 }}>Search site name
+                <input type="search" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Enter site name" style={input} />
+              </label>
+              <label style={{ display: "grid", gap: 7, fontSize: 11, fontWeight: 850 }}>Borough
+                <select value={borough} onChange={(event) => updateFilters({ borough: event.target.value })} style={input}>
+                  <option value="">All boroughs</option>
+                  {boroughs.map((name) => <option value={name} key={name}>{name}</option>)}
                 </select>
-              </div>
-
-              <div style={filterFieldStyle}>
-                <label style={labelStyle}>
-                  Risk
-                </label>
-
-                <select
-                  value={risk}
-                  onChange={(event) =>
-                    setRisk(event.target.value)
-                  }
-                  style={inputStyle}
-                >
-                  <option value="">
-                    All risk bands
-                  </option>
-
-                  {riskOptions.map((item) => (
-                    <option
-                      key={item}
-                      value={item}
-                    >
-                      {item}
-                    </option>
-                  ))}
+              </label>
+              <label style={{ display: "grid", gap: 7, fontSize: 11, fontWeight: 850 }}>Risk Exposure
+                <select value={risk} onChange={(event) => updateFilters({ risk: event.target.value })} style={input}>
+                  <option value="">All risk bands</option>
+                  {risks.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
-              </div>
-
-              <div style={filterActionsStyle}>
-                <button
-                  type="submit"
-                  style={primaryButtonStyle}
-                >
-                  Search
-                </button>
-
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  style={secondaryButtonStyle}
-                >
-                  Reset
-                </button>
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="submit" style={{ cursor: "pointer", background: RED, color: "white", border: 0, borderRadius: 9, padding: "12px 18px", minHeight: 43, fontWeight: 850, fontSize: 11 }}>Search</button>
+                <button type="button" onClick={() => { setSearchDraft(""); router.replace("/sites", { scroll: false }); }} style={{ cursor: "pointer", background: "white", border: `1px solid ${BORDER}`, borderRadius: 9, padding: "12px 15px", fontWeight: 800, fontSize: 11 }}>Reset</button>
               </div>
             </div>
           </form>
 
-          <div style={resultsHeaderStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: "19px 24px 14px" }}>
             <div>
-              <div style={resultsTitleStyle}>
-                {loading
-                  ? "Loading sites..."
-                  : `${sites.length} sites shown`}
-              </div>
-
-              {!loading && (
-                <div style={resultsSubtextStyle}>
-                  Results are ordered by current
-                  priority and site name.
-                </div>
-              )}
+              <strong style={{ fontSize: 15 }}>{loading ? "Loading sites…" : `${sites.length.toLocaleString("en-GB")} sites loaded`}</strong>
+              <div style={{ ...muted, marginTop: 4 }}>{nextPage ? "Additional matching sites are available using Load more." : "Results reflect the selected filters."}</div>
             </div>
+            <Link href="/about#assessment" style={{ color: RED, fontSize: 11, fontWeight: 850, textDecoration: "none" }}>How this assessment works →</Link>
           </div>
 
-          {error && (
-            <div style={errorStyle}>
-              <strong>
-                We could not load the sites.
-              </strong>
+          {error && <div role="alert" style={{ margin: "0 24px 16px", padding: 15, background: "#fff0f0", border: "1px solid #efc1c3", borderRadius: 10, fontSize: 12, color: "#812329" }}>{error}</div>}
+          {!loading && !error && sites.length === 0 && <div style={{ textAlign: "center", padding: "40px 20px", color: MUTED }}>No sites match these filters. Try a different search, borough, priority or risk band.</div>}
 
-              <div style={{ marginTop: "4px" }}>
-                {error}
-              </div>
-            </div>
-          )}
-
-          {!loading &&
-            sites.length === 0 &&
-            !error && (
-              <div style={emptyStyle}>
-                <div style={emptyTitleStyle}>
-                  No sites found
-                </div>
-
-                <div style={emptyTextStyle}>
-                  Try changing the priority,
-                  borough, risk or search term.
-                </div>
-              </div>
-            )}
-
-          {sites.length > 0 && (
-            <div style={tableCardStyle}>
-              <div style={tableScrollStyle}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={tableHeaderRowStyle}>
-                      <th style={thStyle}>
-                        Site
-                      </th>
-
-                      <th style={thStyle}>
-                        Borough
-                      </th>
-
-                      <th style={thStyle}>
-                        Priority
-                      </th>
-
-                      <th style={thStyle}>
-                        Risk
-                      </th>
-
-                      <th style={thStyle}>
-                        Strategic value
-                      </th>
-
-                      <th style={thStyle}>
-                        Planning evidence
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {sites.map((site) => (
-                      <tr
-                        key={site.site_id}
-                        style={tableRowStyle}
-                      >
-                        <td style={siteTdStyle}>
-                          <Link
-                            href={`/site/${site.site_id}`}
-                            style={siteLinkStyle}
-                          >
-                            <div style={siteNameStyle}>
-                              {site.site_name}
-                            </div>
-
-                            <div style={siteMetaStyle}>
-                              {site.postcode ||
-                                "No postcode"}{" "}
-                              · Site ID{" "}
-                              {site.site_id}
-                            </div>
-
-                            <div style={viewRecordStyle}>
-                              View site →
-                            </div>
-                          </Link>
-                        </td>
-
-                        <td style={tdStyle}>
-                          {site.borough}
-                        </td>
-
-                        <td style={tdStyle}>
-                          <PriorityBadge
-                            value={
-                              site.priority_category
-                            }
-                          />
-                        </td>
-
-                        <td style={tdStyle}>
-                          <RiskBadge
-                            value={
-                              site.risk_band
-                            }
-                          />
-
-                          {site.risk_exposure_score !==
-                            null && (
-                            <div style={scoreTextStyle}>
-                              Score{" "}
-                              {
-                                site.risk_exposure_score
-                              }
-                            </div>
-                          )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          <div
-                            style={{
-                              fontWeight: 700,
-                            }}
-                          >
-                            {site.strategic_value_band ||
-                              "Not available"}
-                          </div>
-
-                          {site.strategic_value_score !==
-                            null && (
-                            <div style={scoreTextStyle}>
-                              Score{" "}
-                              {
-                                site.strategic_value_score
-                              }
-                            </div>
-                          )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          <PlanningEvidence
-                            candidateCount={
-                              site.planning_candidate_count ??
-                              0
-                            }
-                            confirmedCount={
-                              site.confirmed_planning_count ??
-                              0
-                            }
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {nextPage && !loading && (
-            <div style={loadMoreWrapStyle}>
-              <button
-                type="button"
-                onClick={loadMore}
-                disabled={loadingMore}
-                style={{
-                  ...loadMoreButtonStyle,
-                  opacity: loadingMore
-                    ? 0.6
-                    : 1,
-                }}
-              >
-                {loadingMore
-                  ? "Loading more sites..."
-                  : "Load more sites"}
-              </button>
-            </div>
-          )}
+          {!loading && sites.length > 0 && <div style={{ margin: "0 24px 20px", border: `1px solid ${BORDER}`, borderRadius: 12, overflowX: "auto" }}>
+            <table style={{ width: "100%", minWidth: 1000, borderCollapse: "collapse", textAlign: "left" }}>
+              <thead><tr style={{ background: "#f4f1ed" }}>{["Site", "Borough", "Priority", "Risk Exposure", "Strategic Value", "Planning evidence"].map((heading) => <th key={heading} style={{ padding: "13px 14px", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", color: "#555" }}>{heading}</th>)}</tr></thead>
+              <tbody>{sites.map((site) => <tr key={String(site.site_id)} style={{ borderTop: `1px solid ${BORDER}` }}>
+                <td style={{ padding: "16px 14px", width: "29%", verticalAlign: "top" }}><Link href={`/site/${encodeURIComponent(String(site.site_id))}`} style={{ color: BLACK, textDecoration: "none" }}><strong style={{ display: "block", fontSize: 13, lineHeight: 1.4 }}>{site.site_name}</strong><span style={{ ...muted, display: "block", marginTop: 5 }}>{site.postcode || "Postcode not recorded"} · Site ID {site.site_id}</span><span style={{ display: "block", color: RED, fontSize: 11, fontWeight: 850, marginTop: 7 }}>View site →</span></Link></td>
+                <td style={{ padding: "16px 14px", verticalAlign: "top", fontSize: 12 }}>{site.borough}</td>
+                <td style={{ padding: "16px 14px", verticalAlign: "top" }}>{pill(site.priority_category, "priority")}</td>
+                <td style={{ padding: "16px 14px", verticalAlign: "top" }}>{pill(site.risk_band, "risk")}<div style={{ ...muted, marginTop: 7 }}>Score {displayNumber(site.risk_exposure_score)}</div></td>
+                <td style={{ padding: "16px 14px", verticalAlign: "top" }}><strong style={{ fontSize: 12 }}>{site.strategic_value_band || "Not recorded"}</strong><div style={{ ...muted, marginTop: 7 }}>Score {displayNumber(site.strategic_value_score)} / 15</div></td>
+                <td style={{ padding: "16px 14px", verticalAlign: "top" }}><Planning site={site} /></td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
+          {nextPage && !loading && <div style={{ display: "flex", justifyContent: "center", padding: "3px 24px 25px" }}><button type="button" disabled={loadingMore} onClick={loadMore} style={{ cursor: loadingMore ? "wait" : "pointer", border: `1px solid ${BLACK}`, background: "white", borderRadius: 9, padding: "12px 19px", fontWeight: 850, fontSize: 11, opacity: loadingMore ? .65 : 1 }}>{loadingMore ? "Loading more…" : "Load more sites"}</button></div>}
         </section>
       </main>
     </AppShell>
   );
 }
-
-function PriorityBadge({
-  value,
-}: {
-  value: string;
-}) {
-  return (
-    <span
-      style={{
-        ...badgeBaseStyle,
-        ...getPriorityStyle(value),
-      }}
-    >
-      {value}
-    </span>
-  );
-}
-
-function RiskBadge({
-  value,
-}: {
-  value: string;
-}) {
-  return (
-    <span
-      style={{
-        ...badgeBaseStyle,
-        ...getRiskStyle(value),
-      }}
-    >
-      {value}
-    </span>
-  );
-}
-
-function PlanningEvidence({
-  candidateCount,
-  confirmedCount,
-}: {
-  candidateCount: number;
-  confirmedCount: number;
-}) {
-  if (confirmedCount > 0) {
-    return (
-      <div>
-        <div style={planningConfirmedStyle}>
-          {confirmedCount} confirmed RF6
-        </div>
-
-        <div style={scoreTextStyle}>
-          {candidateCount} planning{" "}
-          {candidateCount === 1
-            ? "candidate"
-            : "candidates"}{" "}
-          identified
-        </div>
-      </div>
-    );
-  }
-
-  if (candidateCount > 0) {
-    return (
-      <div>
-        <div style={planningReviewStyle}>
-          Evidence for review
-        </div>
-
-        <div style={scoreTextStyle}>
-          {candidateCount} planning{" "}
-          {candidateCount === 1
-            ? "candidate"
-            : "candidates"}{" "}
-          identified
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <span style={mutedStyle}>
-      None identified
-    </span>
-  );
-}
-
-function getPriorityStyle(
-  value: string
-): React.CSSProperties {
-  switch (value) {
-    case "Priority A":
-      return {
-        background: "#242424",
-        color: "#fff",
-      };
-
-    case "Priority B":
-      return {
-        background: "#b96800",
-        color: "#fff",
-      };
-
-    case "Priority C":
-      return {
-        background: "#f2d7a7",
-        color: "#5f3900",
-      };
-
-    case "Strategic Monitor":
-      return {
-        background: "#dfe9f7",
-        color: "#174f8a",
-      };
-
-    case "Risk Review":
-      return {
-        background: "#eee4f4",
-        color: "#674080",
-      };
-
-    default:
-      return {
-        background: "#ebe9e6",
-        color: "#555",
-      };
-  }
-}
-
-function getRiskStyle(
-  value: string
-): React.CSSProperties {
-  switch (value) {
-    case "High":
-      return {
-        background: "#ffe5cf",
-        color: "#803600",
-      };
-
-    case "Medium":
-      return {
-        background: "#fff2c7",
-        color: "#665100",
-      };
-
-    case "No current risk signal":
-      return {
-        background: "#e7efea",
-        color: "#365746",
-      };
-
-    default:
-      return {
-        background: "#eeeeee",
-        color: "#555",
-      };
-  }
-}
-
-const pageStyle: React.CSSProperties = {
-  maxWidth: "1440px",
-  margin: "0 auto",
-  padding: "44px 28px 80px",
-};
-
-const heroStyle: React.CSSProperties = {
-  marginBottom: "30px",
-  maxWidth: "920px",
-};
-
-const heroEyebrowStyle: React.CSSProperties = {
-  color: "#e21b23",
-  fontWeight: 800,
-  fontSize: "13px",
-  letterSpacing: "0.09em",
-  textTransform: "uppercase",
-  marginBottom: "12px",
-};
-
-const heroTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: "clamp(42px, 6vw, 68px)",
-  lineHeight: 0.98,
-  letterSpacing: "-0.045em",
-  fontWeight: 900,
-};
-
-const heroTextStyle: React.CSSProperties = {
-  marginTop: "18px",
-  marginBottom: 0,
-  maxWidth: "720px",
-  fontSize: "18px",
-  lineHeight: 1.55,
-  color: "#595959",
-};
-
-const workspaceStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e2ded9",
-  borderRadius: "20px",
-  overflow: "hidden",
-  boxShadow:
-    "0 12px 40px rgba(25, 20, 15, 0.05)",
-};
-
-const tabScrollStyle: React.CSSProperties = {
-  overflowX: "auto",
-  borderBottom: "1px solid #e4e0dc",
-  background: "#fbfaf8",
-};
-
-const tabsStyle: React.CSSProperties = {
-  display: "flex",
-  minWidth: "max-content",
-  padding: "0 22px",
-};
-
-const tabStyle: React.CSSProperties = {
-  border: 0,
-  borderBottom: "3px solid transparent",
-  background: "transparent",
-  padding: "20px 15px 16px",
-  fontSize: "13px",
-  fontWeight: 800,
-  color: "#666",
-  cursor: "pointer",
-};
-
-const activeTabStyle: React.CSSProperties = {
-  color: "#171717",
-  borderBottomColor: "#e21b23",
-};
-
-const tabContextStyle: React.CSSProperties = {
-  padding: "24px 28px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "20px",
-  borderBottom: "1px solid #eeeae6",
-};
-
-const tabContextTitleStyle: React.CSSProperties = {
-  fontSize: "23px",
-  fontWeight: 850,
-  letterSpacing: "-0.02em",
-};
-
-const tabContextTextStyle: React.CSSProperties = {
-  color: "#686868",
-  fontSize: "14px",
-  marginTop: "5px",
-  lineHeight: 1.5,
-};
-
-const filterPanelStyle: React.CSSProperties = {
-  padding: "22px 28px",
-  background: "#f8f6f3",
-  borderBottom: "1px solid #e8e4df",
-};
-
-const filterGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns:
-    "minmax(260px, 2fr) repeat(2, minmax(180px, 1fr)) auto",
-  gap: "14px",
-  alignItems: "end",
-};
-
-const filterFieldStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "7px",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: "12px",
-  fontWeight: 800,
-  color: "#555",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: "44px",
-  boxSizing: "border-box",
-  border: "1px solid #d4d0ca",
-  borderRadius: "9px",
-  padding: "0 12px",
-  fontSize: "14px",
-  background: "#fff",
-  color: "#171717",
-};
-
-const filterActionsStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "8px",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  minHeight: "44px",
-  padding: "0 19px",
-  border: 0,
-  borderRadius: "9px",
-  background: "#e21b23",
-  color: "#fff",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  minHeight: "44px",
-  padding: "0 17px",
-  border: "1px solid #cbc6c0",
-  borderRadius: "9px",
-  background: "#fff",
-  color: "#333",
-  fontWeight: 750,
-  cursor: "pointer",
-};
-
-const resultsHeaderStyle: React.CSSProperties = {
-  padding: "23px 28px 15px",
-};
-
-const resultsTitleStyle: React.CSSProperties = {
-  fontSize: "17px",
-  fontWeight: 850,
-};
-
-const resultsSubtextStyle: React.CSSProperties = {
-  marginTop: "4px",
-  fontSize: "12px",
-  color: "#777",
-};
-
-const tableCardStyle: React.CSSProperties = {
-  margin: "0 28px 28px",
-  border: "1px solid #dfdbd6",
-  borderRadius: "13px",
-  overflow: "hidden",
-};
-
-const tableScrollStyle: React.CSSProperties = {
-  overflowX: "auto",
-};
-
-const tableStyle: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: "1050px",
-};
-
-const tableHeaderRowStyle: React.CSSProperties = {
-  background: "#f3f1ee",
-  textAlign: "left",
-};
-
-const tableRowStyle: React.CSSProperties = {
-  borderTop: "1px solid #ebe8e4",
-};
-
-const thStyle: React.CSSProperties = {
-  padding: "13px 16px",
-  fontSize: "11px",
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  color: "#666",
-  fontWeight: 850,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "17px 16px",
-  verticalAlign: "top",
-  fontSize: "14px",
-  lineHeight: 1.45,
-};
-
-const siteTdStyle: React.CSSProperties = {
-  ...tdStyle,
-  width: "30%",
-};
-
-const siteLinkStyle: React.CSSProperties = {
-  color: "inherit",
-  textDecoration: "none",
-  display: "block",
-};
-
-const siteNameStyle: React.CSSProperties = {
-  fontWeight: 850,
-  lineHeight: 1.3,
-};
-
-const siteMetaStyle: React.CSSProperties = {
-  marginTop: "5px",
-  fontSize: "12px",
-  color: "#777",
-};
-
-const viewRecordStyle: React.CSSProperties = {
-  marginTop: "8px",
-  color: "#e21b23",
-  fontSize: "12px",
-  fontWeight: 800,
-};
-
-const badgeBaseStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: "999px",
-  padding: "6px 9px",
-  fontSize: "11px",
-  lineHeight: 1,
-  fontWeight: 850,
-  whiteSpace: "nowrap",
-};
-
-const scoreTextStyle: React.CSSProperties = {
-  color: "#777",
-  fontSize: "12px",
-  marginTop: "5px",
-};
-
-const planningConfirmedStyle: React.CSSProperties = {
-  fontWeight: 800,
-  color: "#8b3100",
-};
-
-const planningReviewStyle: React.CSSProperties = {
-  fontWeight: 800,
-  color: "#67521b",
-};
-
-const mutedStyle: React.CSSProperties = {
-  color: "#888",
-};
-
-const errorStyle: React.CSSProperties = {
-  margin: "0 28px 25px",
-  padding: "16px",
-  borderRadius: "10px",
-  background: "#fff0f0",
-  color: "#7a1f23",
-  border: "1px solid #f1c5c7",
-  fontSize: "14px",
-};
-
-const emptyStyle: React.CSSProperties = {
-  margin: "0 28px 28px",
-  padding: "55px 20px",
-  textAlign: "center",
-  border: "1px dashed #ccc6bf",
-  borderRadius: "12px",
-};
-
-const emptyTitleStyle: React.CSSProperties = {
-  fontSize: "18px",
-  fontWeight: 850,
-};
-
-const emptyTextStyle: React.CSSProperties = {
-  marginTop: "6px",
-  color: "#777",
-  fontSize: "14px",
-};
-
-const loadMoreWrapStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  padding: "0 28px 30px",
-};
-
-const loadMoreButtonStyle: React.CSSProperties = {
-  border: "1px solid #242424",
-  borderRadius: "9px",
-  background: "#fff",
-  padding: "12px 22px",
-  fontWeight: 800,
-  cursor: "pointer",
-};
