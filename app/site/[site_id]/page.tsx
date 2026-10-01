@@ -43,6 +43,7 @@ type SiteDetail = {
   sv4_basis_borough_units: NumericValue;
   sv5_inner_london_score: NumericValue;
   sv6_deprivation_score: NumericValue;
+  imd_decile: NumericValue;
 
   adult_football_rugby_pitch_units: NumericValue;
   rugby_pitch_units: NumericValue;
@@ -1522,9 +1523,11 @@ function StrategicTab({ site }: { site: SiteDetail }) {
       max: 2,
       evidence: isYes(site.missing_imd_flag)
         ? "Deprivation evidence unavailable"
-        : "Index of Multiple Deprivation evidence",
+        : numericValue(site.imd_decile) !== null
+        ? `IMD decile ${formatNumber(site.imd_decile)} of 10`
+        : "IMD decile not recorded",
       description:
-        "Recognises provision serving areas with higher levels of deprivation.",
+        "Uses the recorded Index of Multiple Deprivation decile to assess local deprivation context. Decile 1 represents the most deprived 10% of areas nationally; decile 10 the least deprived 10%.",
     },
   ];
 
