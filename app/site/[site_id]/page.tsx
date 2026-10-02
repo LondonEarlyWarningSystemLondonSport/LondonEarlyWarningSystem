@@ -467,10 +467,10 @@ function getOutcomeDescription(priority: string | null) {
 
 function getKnownRiskEvidence(site: SiteDetail): string {
   if (numericOrZero(site.rf3_pps_at_risk_score) > 0) {
-    return "Known at-risk evidence contributes to Risk Exposure";
+    return "KKP/PPS at-risk designation recorded — contributes to Risk Exposure";
   }
 
-  return "No scored known at-risk evidence";
+  return "No KKP/PPS at-risk contribution recorded in this assessment";
 }
 
 function getMultiPitchEvidence(site: SiteDetail): string {
@@ -1304,7 +1304,7 @@ function RiskTab({
             score={site.rf3_pps_at_risk_score}
             maxScore={5}
             evidence={getKnownRiskEvidence(site)}
-            description="Recognises existing playing-field protection concerns recorded in linked evidence."
+            description="Awards points for an affirmative at-risk designation in linked KKP/PPS protection evidence. The designation records a source concern; it does not independently verify that the same threat is active today. A zero score does not establish that the site is free from protection concerns."
           />
 
           <AssessmentCriterion
@@ -1425,16 +1425,16 @@ function RiskTab({
 
       <section style={sectionStyle}>
         <SectionHeading
-          eyebrow="Playing Pitch Strategy context"
+          eyebrow="KKP / Playing Pitch Strategy context"
           title="Supporting protection evidence"
-          description="Linked playing-pitch evidence provides contextual information where available."
+          description="Linked KKP/PPS records provide protection and strategic context where available. Designations are source-recorded and may require current verification."
         />
 
         <div style={gridStyle}>
           <InfoCard
             title="Critical-site flag"
             value={displayText(site.pps_critical_site_flag)}
-            text="Critical-site designation recorded in the linked Playing Pitch Strategy."
+            text="Critical-site designation in the linked KKP/PPS source record. This is separate from the at-risk designation and does not automatically award Known at-risk points."
           />
 
           <InfoCard
@@ -1461,6 +1461,28 @@ function RiskTab({
             }
             text="Ownership and management details from linked PPS evidence."
           />
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            padding: "16px 18px",
+            borderRadius: 12,
+            border: `1px solid ${BORDER}`,
+            background: "#f8f6f3",
+          }}
+        >
+          <h3 style={{ fontSize: 13, margin: "0 0 7px", color: BLACK }}>
+            How to interpret these KKP/PPS designations
+          </h3>
+          <p style={{ fontSize: 11, lineHeight: 1.65, color: MUTED, margin: 0 }}>
+            A critical-site designation describes strategic importance in the
+            linked source evidence; it is not the same as a recorded at-risk
+            concern. The Known at-risk score is based on a separate affirmative
+            at-risk designation in that evidence. A missing or non-affirmative
+            designation does not prove that a site faces no risk. Source-recorded
+            concerns may also need checking against current site circumstances.
+          </p>
         </div>
       </section>
 
