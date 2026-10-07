@@ -53,6 +53,8 @@ const boroughs = [
 
 // Keep the API values unchanged. 'Low' is now included in the selector.
 const risks = ["High", "Medium", "Low", "No current risk signal"];
+const ACTIVE_PLACES_BASE_URL =
+  "https://experience.arcgis.com/experience/8f02fc06a2f24a7e834b13209b38aa22/";
 const RED = "#e21b23";
 const BLACK = "#171717";
 const BORDER = "#e3dfda";
@@ -62,6 +64,12 @@ const input: CSSProperties = {
   border: "1px solid #d6d1ca", borderRadius: 9, background: "white",
   color: BLACK, fontSize: 12,
 };
+
+function activePlacesUrl(siteId: number | string) {
+  const value = String(siteId).trim();
+  if (!/^\d+$/.test(value)) return null;
+  return `${ACTIVE_PLACES_BASE_URL}?siteid=${encodeURIComponent(value)}`;
+}
 
 function n(value: Value) {
   if (value == null || value === "") return null;
@@ -278,7 +286,26 @@ function SitesPageContent() {
             <table style={{ width: "100%", minWidth: 1000, borderCollapse: "collapse", textAlign: "left" }}>
               <thead><tr style={{ background: "#f4f1ed" }}>{["Site", "Borough", "Priority", "Risk Exposure", "Strategic Value", "Planning evidence"].map((heading) => <th key={heading} style={{ padding: "13px 14px", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", color: "#555" }}>{heading}</th>)}</tr></thead>
               <tbody>{sites.map((site) => <tr key={String(site.site_id)} style={{ borderTop: `1px solid ${BORDER}` }}>
-                <td style={{ padding: "16px 14px", width: "29%", verticalAlign: "top" }}><Link href={`/site/${encodeURIComponent(String(site.site_id))}`} style={{ color: BLACK, textDecoration: "none" }}><strong style={{ display: "block", fontSize: 13, lineHeight: 1.4 }}>{site.site_name}</strong><span style={{ ...muted, display: "block", marginTop: 5 }}>{site.postcode || "Postcode not recorded"} · Site ID {site.site_id}</span><span style={{ display: "block", color: RED, fontSize: 11, fontWeight: 850, marginTop: 7 }}>View site →</span></Link></td>
+                <td style={{ padding: "16px 14px", width: "29%", verticalAlign: "top" }}>
+                  <Link href={`/site/${encodeURIComponent(String(site.site_id))}`} style={{ color: BLACK, textDecoration: "none" }}>
+                    <strong style={{ display: "block", fontSize: 13, lineHeight: 1.4 }}>{site.site_name}</strong>
+                    <span style={{ ...muted, display: "block", marginTop: 5 }}>{site.postcode || "Postcode not recorded"} · Site ID {site.site_id}</span>
+                  </Link>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "7px 13px", marginTop: 7 }}>
+                    <Link href={`/site/${encodeURIComponent(String(site.site_id))}`} style={{ color: RED, fontSize: 11, fontWeight: 850, textDecoration: "none" }}>View site →</Link>
+                    {activePlacesUrl(site.site_id) && (
+                      <a
+                        href={activePlacesUrl(site.site_id) || undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open ${site.site_name} in Sport England Active Places`}
+                        style={{ color: "#555", fontSize: 11, fontWeight: 800, textDecoration: "none" }}
+                      >
+                        Sport England Active Places ↗
+                      </a>
+                    )}
+                  </div>
+                </td>
                 <td style={{ padding: "16px 14px", verticalAlign: "top", fontSize: 12 }}>{site.borough}</td>
                 <td style={{ padding: "16px 14px", verticalAlign: "top" }}>{pill(site.priority_category, "priority")}</td>
                 <td style={{ padding: "16px 14px", verticalAlign: "top" }}>{pill(site.risk_band, "risk")}<div style={{ ...muted, marginTop: 7 }}>Score {displayNumber(site.risk_exposure_score)}</div></td>
