@@ -105,6 +105,8 @@ type PlanningState = {
 };
 
 const BLACK = "#171717";
+const ACTIVE_PLACES_BASE_URL =
+  "https://experience.arcgis.com/experience/8f02fc06a2f24a7e834b13209b38aa22/";
 const RED = "#e21b23";
 const BORDER = "#e2ded9";
 const MUTED = "#6d6d6d";
@@ -189,6 +191,13 @@ function isYes(value: unknown): boolean {
   }
 
   return false;
+}
+
+function activePlacesUrl(siteId: string | number | null | undefined) {
+  if (siteId === null || siteId === undefined) return null;
+  const value = String(siteId).trim();
+  if (!/^\d+$/.test(value)) return null;
+  return `${ACTIVE_PLACES_BASE_URL}?siteid=${encodeURIComponent(value)}`;
 }
 
 function safeText(value: unknown): string {
@@ -2127,15 +2136,29 @@ export default function SiteDetailPage() {
             ← Explore Sites
           </Link>
 
-          <Link
-            href="/about#assessment"
-            style={{
-              ...linkStyle,
-              color: RED,
-            }}
-          >
-            How this assessment works →
-          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            {activePlacesUrl(site.site_id) && (
+              <a
+                href={activePlacesUrl(site.site_id) || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open ${displayText(site.site_name)} in Sport England Active Places`}
+                style={{ ...linkStyle, color: "#555" }}
+              >
+                Sport England Active Places ↗
+              </a>
+            )}
+
+            <Link
+              href="/about#assessment"
+              style={{
+                ...linkStyle,
+                color: RED,
+              }}
+            >
+              How this assessment works →
+            </Link>
+          </div>
         </div>
 
         <section
