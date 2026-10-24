@@ -55,6 +55,10 @@ export default function AppShell({ children }: AppShellProps) {
               );
             })}
           </nav>
+          <button type="button" onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.replace("/login");
+          }} style={{background:"transparent",border:"1px solid #999",borderRadius:6,padding:"8px 12px",cursor:"pointer",marginLeft:12}}>Sign out</button>
         </div>
       </header>
 
